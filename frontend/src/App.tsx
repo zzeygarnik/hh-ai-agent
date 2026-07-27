@@ -9,8 +9,16 @@ import { TopHeader } from './components/TopHeader';
 import { SettingsForm } from './components/SettingsForm';
 import { BottomSaveBar } from './components/BottomSaveBar';
 import { LogsView } from './components/LogsView';
-import { AgentSettings, ActiveTab } from './types';
+import { AgentSettings, ActiveTab, ResumeProfile } from './types';
 import { api, onAgentStatus, whenApiReady } from './bridge';
+
+function makeProfileId(): string {
+  return `profile-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function emptyProfile(): ResumeProfile {
+  return { id: makeProfileId(), name: '', searchTags: [], resumeSummary: '' };
+}
 
 const EMPTY_SETTINGS: AgentSettings = {
   botToken: '',
@@ -21,16 +29,40 @@ const EMPTY_SETTINGS: AgentSettings = {
   ollamaModel: '',
   candidateName: '',
   githubUrl: '',
-  resumeTitle: '',
-  searchTags: [],
   regions: {
     moscow: false,
     spb: true,
     remote: true,
     customRegions: [],
   },
-  coverLetterTemplate: '',
+  resumeProfiles: [emptyProfile()],
 };
+
+function parseResumeProfiles(raw: string): ResumeProfile[] {
+  if (!raw) return [emptyProfile()];
+  try {
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed) || parsed.length === 0) return [emptyProfile()];
+    return parsed.map((p: any) => ({
+      id: makeProfileId(),
+      name: typeof p?.name === 'string' ? p.name : '',
+      searchTags: Array.isArray(p?.queries) ? p.queries.filter((q: any) => typeof q === 'string') : [],
+      resumeSummary: typeof p?.summary === 'string' ? p.summary : '',
+    }));
+  } catch {
+    return [emptyProfile()];
+  }
+}
+
+function serializeResumeProfiles(profiles: ResumeProfile[]): string {
+  return JSON.stringify(
+    profiles.map((p) => ({
+      name: p.name,
+      queries: p.searchTags,
+      summary: p.resumeSummary,
+    }))
+  );
+}
 
 // env-ключи, которые форма не редактирует (DEEPSEEK_MODEL и т.п.) — сохраняем как есть.
 function envToSettings(env: Record<string, string>): AgentSettings {
@@ -43,18 +75,13 @@ function envToSettings(env: Record<string, string>): AgentSettings {
     ollamaModel: env.OLLAMA_MODEL || '',
     candidateName: env.MY_NAME || '',
     githubUrl: env.MY_GITHUB || '',
-    resumeTitle: env.TARGET_RESUME_NAME || '',
-    searchTags: (env.SEARCH_QUERIES || '')
-      .split('\n')
-      .map((s) => s.trim())
-      .filter(Boolean),
     regions: {
       moscow: env.SEARCH_REGION_MOSCOW === 'true',
       spb: env.SEARCH_REGION_SPB !== 'false',
       remote: env.SEARCH_REGION_REMOTE !== 'false',
       customRegions: [],
     },
-    coverLetterTemplate: env.MY_RESUME_SUMMARY || '',
+    resumeProfiles: parseResumeProfiles(env.RESUME_PROFILES || ''),
   };
 }
 
@@ -68,9 +95,7 @@ function settingsToEnvPatch(s: AgentSettings): Record<string, string> {
     OLLAMA_MODEL: s.ollamaModel,
     MY_NAME: s.candidateName,
     MY_GITHUB: s.githubUrl,
-    TARGET_RESUME_NAME: s.resumeTitle,
-    SEARCH_QUERIES: s.searchTags.join('\n'),
-    MY_RESUME_SUMMARY: s.coverLetterTemplate,
+    RESUME_PROFILES: serializeResumeProfiles(s.resumeProfiles),
     SEARCH_REGION_MOSCOW: String(s.regions.moscow),
     SEARCH_REGION_SPB: String(s.regions.spb),
     SEARCH_REGION_REMOTE: String(s.regions.remote),

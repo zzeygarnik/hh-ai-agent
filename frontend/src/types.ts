@@ -1,5 +1,12 @@
 export type LlmProvider = 'deepseek' | 'ollama';
 
+export interface ResumeProfile {
+  id: string;
+  name: string; // точное название резюме на hh.ru
+  searchTags: string[]; // поисковые запросы для этого резюме
+  resumeSummary: string; // текст резюме — контекст для LLM
+}
+
 export interface AgentSettings {
   // Telegram
   botToken: string;
@@ -14,10 +21,8 @@ export interface AgentSettings {
   // Candidate profile
   candidateName: string;
   githubUrl: string;
-  resumeTitle: string;
 
-  // Search parameters
-  searchTags: string[];
+  // Регионы — общие для всех резюме-профилей
   regions: {
     moscow: boolean;
     spb: boolean;
@@ -25,8 +30,8 @@ export interface AgentSettings {
     customRegions: string[];
   };
 
-  // Cover letter / Resume context
-  coverLetterTemplate: string;
+  // Один или несколько профилей резюме — бот ищет и откликается по каждому отдельно
+  resumeProfiles: ResumeProfile[];
 }
 
 export interface LogMessage {

@@ -53,7 +53,7 @@ CONFIG_KEYS = [
     "DEEPSEEK_API_KEY", "DEEPSEEK_MODEL",
     "OLLAMA_URL", "OLLAMA_MODEL",
     "MY_NAME", "MY_GITHUB",
-    "TARGET_RESUME_NAME", "SEARCH_QUERIES", "MY_RESUME_SUMMARY",
+    "RESUME_PROFILES",
     "SEARCH_REGION_MOSCOW", "SEARCH_REGION_SPB", "SEARCH_REGION_REMOTE",
 ]
 
@@ -139,8 +139,6 @@ class Api:
     def get_config(self):
         values = load_env_values()
         result = {key: values.get(key, "") for key in CONFIG_KEYS}
-        queries_raw = result.get("SEARCH_QUERIES", "")
-        result["SEARCH_QUERIES"] = "\n".join(q.strip() for q in queries_raw.split(",") if q.strip())
         result["running"] = self._is_running()
         return result
 
@@ -227,11 +225,7 @@ class Api:
     def _persist(self, data: dict):
         values = load_env_values()
         for key in CONFIG_KEYS:
-            raw = data.get(key) or ""
-            if key == "SEARCH_QUERIES":
-                queries = [q.strip() for q in raw.splitlines() if q.strip()]
-                raw = ", ".join(queries)
-            values[key] = raw
+            values[key] = data.get(key) or ""
         write_env_values(values)
 
     def _bot_thread_main(self):

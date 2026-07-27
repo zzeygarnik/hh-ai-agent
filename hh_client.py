@@ -6,7 +6,7 @@ from playwright.async_api import async_playwright
 from playwright_stealth import Stealth
 import database
 from ai_analyzer import is_vacancy_suitable, generate_cover_letter
-from config import SEARCH_QUERIES, SEARCH_AREAS, TARGET_RESUME_NAME
+from config import RESUME_PROFILES, SEARCH_AREAS
 
 logger = logging.getLogger(__name__)
 
@@ -80,7 +80,15 @@ class HHClient:
 
     async def search_and_apply(self, send_notification_func):
         logger.info("Начинаем поиск вакансий...")
-        for query in SEARCH_QUERIES:
+        for profile in RESUME_PROFILES:
+            logger.info(f"Резюме-профиль: {profile['name'] or '(без названия)'}")
+            await self._search_and_apply_for_profile(profile, send_notification_func)
+
+    async def _search_and_apply_for_profile(self, profile, send_notification_func):
+        resume_name = profile["name"]
+        resume_summary = profile["summary"]
+
+        for query in profile["queries"]:
             logger.info(f"Поиск по запросу: {query}")
 
             for area in SEARCH_AREAS:
@@ -191,10 +199,10 @@ class HHClient:
                                 continue
 
                             # Анализ ИИ
-                            if await is_vacancy_suitable(title, description):
+                            if await is_vacancy_suitable(title, description, resume_summary):
                                 logger.info(f"Вакансия подходит: {title}")
 
-                                cover_letter = await generate_cover_letter(title, description)
+                                cover_letter = await generate_cover_letter(title, description, resume_summary)
 
                                 # Пробуем откликнуться
                                 apply_btn = page.locator('a[data-qa="vacancy-response-link-top"]').first
@@ -212,13 +220,13 @@ class HHClient:
 
                                     # Шаг 0: Выбор нужного резюме (если их несколько)
                                     try:
-                                        if TARGET_RESUME_NAME:
+                                        if resume_name:
                                             resume_dropdown = page.locator('[data-qa*="resume-select"], [data-qa*="resume-selector"], [data-qa="vacancy-response-resume-selector"]').first
                                             if await resume_dropdown.is_visible():
                                                 await resume_dropdown.click()
                                                 await asyncio.sleep(1)
                                                 # Кликаем по нужному резюме из выпадающего списка
-                                                target_resume_btn = page.locator(f'text="{TARGET_RESUME_NAME}"').first
+                                                target_resume_btn = page.locator(f'text="{resume_name}"').first
                                                 if await target_resume_btn.is_visible():
                                                     await target_resume_btn.click()
                                                     await asyncio.sleep(1)

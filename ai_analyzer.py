@@ -12,7 +12,6 @@ from config import (
     LLM_PROVIDER,
     MY_GITHUB,
     MY_NAME,
-    MY_RESUME_SUMMARY,
     OLLAMA_MODEL,
     OLLAMA_URL,
 )
@@ -128,8 +127,8 @@ def _identity_block() -> str:
 _MULTI_RESUME_MARKER = re.compile(r"^---\s.+\s---\s*$", re.MULTILINE)
 
 
-def _resume_context_note() -> str:
-    if not _MULTI_RESUME_MARKER.search(MY_RESUME_SUMMARY):
+def _resume_context_note(resume_summary: str) -> str:
+    if not _MULTI_RESUME_MARKER.search(resume_summary):
         return ""
     return (
         "\n[Это несколько разных резюме, разделённых заголовками ---. Не путай факты между "
@@ -151,12 +150,12 @@ def _clean_cover_letter(text: str) -> str:
     return text.strip()
 
 
-async def generate_cover_letter(vacancy_title: str, vacancy_description: str) -> str:
+async def generate_cover_letter(vacancy_title: str, vacancy_description: str, resume_summary: str) -> str:
     prompt = f"""
 Напиши сопроводительное письмо для отклика на вакансию.
 Мой профиль:
-{MY_RESUME_SUMMARY}
-{_resume_context_note()}
+{resume_summary}
+{_resume_context_note(resume_summary)}
 
 Вакансия: {vacancy_title}
 Описание: {vacancy_description}
@@ -180,12 +179,12 @@ async def generate_cover_letter(vacancy_title: str, vacancy_description: str) ->
         return "Здравствуйте! Прошу рассмотреть мое резюме на эту вакансию. Буду рад обсудить детали на собеседовании."
 
 
-async def is_vacancy_suitable(vacancy_title: str, vacancy_description: str) -> bool:
+async def is_vacancy_suitable(vacancy_title: str, vacancy_description: str, resume_summary: str) -> bool:
     prompt = f"""
 Твоя задача — оценить, подходит ли вакансия под мои критерии поиска.
 Мои требования и профиль (внимательно учти желаемую зарплату, локацию и стек технологий):
-{MY_RESUME_SUMMARY}
-{_resume_context_note()}
+{resume_summary}
+{_resume_context_note(resume_summary)}
 
 Также мне СТРОГО НЕ подходят (отклоняй сразу, отвечая NO):
 - Вакансии уровня Senior (Сеньор), Lead или Архитектор.

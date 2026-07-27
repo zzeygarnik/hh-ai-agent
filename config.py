@@ -1,3 +1,4 @@
+import json
 import os
 from dotenv import load_dotenv
 
@@ -42,8 +43,8 @@ if not SEARCH_AREAS:
     SEARCH_AREAS = [_REGION_DEFS[1][2], _REGION_DEFS[2][2]]
 
 # HH.ru настройки
-# Ключевые слова для поиска. По умолчанию — список ниже; можно переопределить через .env
-# переменной SEARCH_QUERIES (запросы через запятую).
+# Ключевые слова для поиска по умолчанию (используются, если в профиле резюме
+# не заданы свои queries).
 _DEFAULT_SEARCH_QUERIES = [
     "Python backend",
     "Python разработчик",
@@ -55,18 +56,8 @@ _DEFAULT_SEARCH_QUERIES = [
     "Backend Developer",
     "Backend Python",
 ]
-_search_queries_env = os.getenv("SEARCH_QUERIES", "")
-SEARCH_QUERIES = (
-    [q.strip() for q in _search_queries_env.split(",") if q.strip()]
-    if _search_queries_env
-    else _DEFAULT_SEARCH_QUERIES
-)
 
-# Название резюме, которое агент должен выбирать при отклике (должно в точности совпадать с тем, что написано на HH)
-TARGET_RESUME_NAME = os.getenv("TARGET_RESUME_NAME", "Backend-разработчик")
-
-# Резюме (для генерации сопроводительного письма). Опиши свой стек, проекты, пожелания максимально подробно.
-MY_RESUME_SUMMARY = os.getenv("MY_RESUME_SUMMARY", """
+_DEFAULT_RESUME_SUMMARY = """
 Я программист с опытом разработки на Python, C, C++.
 Интересуюсь backend-разработкой, фулстек-задачами и Computer Vision.
 Готов решать сложные задачи и быстро обучаюсь.
@@ -77,4 +68,43 @@ MY_RESUME_SUMMARY = os.getenv("MY_RESUME_SUMMARY", """
 Готов проходить тестовые задания и собеседования.
 Имею высшее образование по направлению "Информатика и вычислительная техника".
 Мой стек: Python, C++, C, Docker, SQL, FastAPI, HTML, JS, PostgreSQL, Linux.
-""")
+"""
+
+_DEFAULT_PROFILES = [
+    {
+        "name": "Backend-разработчик",
+        "queries": _DEFAULT_SEARCH_QUERIES,
+        "summary": _DEFAULT_RESUME_SUMMARY,
+    }
+]
+
+# Резюме-профили: агент ищет и откликается ОТДЕЛЬНО по каждому профилю, каждый
+# со своим названием резюме на hh.ru, своими поисковыми запросами и своим
+# текстом резюме для LLM (для случая, когда на hh.ru несколько резюме на
+# разные позиции). Хранится в .env одной JSON-строкой (GUI пишет её сама).
+def _load_resume_profiles() -> list:
+    raw = os.getenv("RESUME_PROFILES", "")
+    if not raw:
+        return _DEFAULT_PROFILES
+    try:
+        parsed = json.loads(raw)
+    except (json.JSONDecodeError, TypeError):
+        return _DEFAULT_PROFILES
+
+    if not isinstance(parsed, list) or not parsed:
+        return _DEFAULT_PROFILES
+
+    profiles = []
+    for p in parsed:
+        if not isinstance(p, dict):
+            continue
+        queries = [q.strip() for q in p.get("queries", []) if isinstance(q, str) and q.strip()]
+        profiles.append({
+            "name": (p.get("name") or "").strip(),
+            "queries": queries or _DEFAULT_SEARCH_QUERIES,
+            "summary": p.get("summary") or _DEFAULT_RESUME_SUMMARY,
+        })
+    return profiles or _DEFAULT_PROFILES
+
+
+RESUME_PROFILES = _load_resume_profiles()
