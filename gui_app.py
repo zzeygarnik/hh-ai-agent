@@ -39,7 +39,10 @@ else:
 ENV_PATH = BASE_DIR / ".env"
 ENV_EXAMPLE_PATH = BASE_DIR / ".env.example"
 FRONTEND_DIST = _RESOURCE_DIR / "frontend" / "dist"
-PROGRESS_HTML = _RESOURCE_DIR / "gui_assets" / "progress.html"
+# Лежит внутри frontend/dist (см. frontend/public/gui_assets), а не рядом с exe:
+# у pywebview один HTTP-сервер на всю сессию с корнем, зафиксированным при первом окне
+# (главное окно = frontend/dist) — файл вне этого корня отдаёт 404 у окна прогресса.
+PROGRESS_HTML = FRONTEND_DIST / "gui_assets" / "progress.html"
 
 DEFAULTS = {
     "LLM_PROVIDER": "deepseek",
@@ -260,9 +263,9 @@ class Api:
         self.bot_loop = loop
         self.stop_event = asyncio.Event()
 
-        import main as main_module  # тяжёлый импорт (playwright/aiogram) — только когда реально нужен
-
         try:
+            import main as main_module  # тяжёлый импорт (playwright/aiogram) — только когда реально нужен
+
             loop.run_until_complete(main_module.run_agent(self.stop_event))
         except Exception as e:
             self._push_log(f"[критическая ошибка бота: {e}]\n")

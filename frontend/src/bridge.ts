@@ -13,6 +13,11 @@ type StatusListener = (running: boolean) => void;
 const logListeners = new Set<LogListener>();
 const statusListeners = new Set<StatusListener>();
 
+// Буфер живёт вне React-дерева, поэтому переключение вкладок (LogsView
+// монтируется/размонтируется) не теряет строки, пришедшие, пока панель была скрыта.
+const MAX_BUFFERED_LOGS = 500;
+const logBuffer: string[] = [];
+
 declare global {
   interface Window {
     appendLog: (line: string) => void;
@@ -39,8 +44,14 @@ declare global {
 }
 
 window.appendLog = (line: string) => {
+  logBuffer.push(line);
+  if (logBuffer.length > MAX_BUFFERED_LOGS) logBuffer.shift();
   logListeners.forEach((fn) => fn(line));
 };
+
+export function getBufferedLogs(): string[] {
+  return logBuffer;
+}
 
 window.setStatus = (running: boolean) => {
   statusListeners.forEach((fn) => fn(running));

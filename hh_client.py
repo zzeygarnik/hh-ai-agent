@@ -2,7 +2,7 @@ import os
 import asyncio
 import logging
 import random
-from playwright.async_api import async_playwright
+from playwright.async_api import async_playwright, TimeoutError as PlaywrightTimeoutError
 from playwright_stealth import Stealth
 import database
 from ai_analyzer import is_vacancy_suitable, generate_cover_letter
@@ -26,10 +26,12 @@ async def fetch_hh_resumes() -> list:
     смены разметки; пользователь может подчистить лишнее в GUI после импорта.
     """
     if not os.path.exists(STATE_FILE):
+        logger.error("Импорт резюме: нет сохранённой сессии hh.ru (state.json).")
         raise RuntimeError(
             "Нет сохранённой сессии hh.ru. Сначала один раз запустите бота и войдите в аккаунт."
         )
 
+    logger.info("Импорт резюме с hh.ru: запускаю браузер...")
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True)
         try:
@@ -37,9 +39,15 @@ async def fetch_hh_resumes() -> list:
             page = await context.new_page()
             await Stealth().apply_stealth_async(page)
 
-            await page.goto("https://hh.ru/applicant/resumes")
-            await page.wait_for_load_state("networkidle")
-            await asyncio.sleep(2)
+            logger.info("Открываю страницу 'Мои резюме' на hh.ru...")
+            try:
+                await page.goto("https://hh.ru/applicant/resumes", timeout=30000)
+                # Не ждём networkidle: на этой странице чат-виджет и аналитика держат
+                # сеть занятой постоянно, поэтому networkidle почти всегда упирается
+                # в дефолтный таймаут молча. Ждём конкретно появления ссылки на резюме.
+                await page.locator('a[href*="/resume/"]').first.wait_for(state="attached", timeout=20000)
+            except PlaywrightTimeoutError:
+                logger.warning("За 20 секунд резюме на странице не появились (нет резюме либо сессия истекла).")
 
             anchors = await page.locator('a[href*="/resume/"]').all()
             seen = set()
@@ -58,29 +66,35 @@ async def fetch_hh_resumes() -> list:
                 resume_links.append({"name": title, "url": href})
 
             if not resume_links:
+                logger.error("Импорт резюме: на странице 'Мои резюме' ссылок не найдено.")
                 raise RuntimeError(
                     "Не нашёл резюме на hh.ru. Проверьте, что они опубликованы и видны в личном кабинете."
                 )
 
+            logger.info(f"Найдено резюме на hh.ru: {len(resume_links)}")
+
             results = []
             for link in resume_links:
+                logger.info(f"Читаю резюме: {link['name']}...")
                 detail_page = await context.new_page()
                 await Stealth().apply_stealth_async(detail_page)
                 summary = ""
                 try:
-                    await detail_page.goto(link["url"])
-                    await detail_page.wait_for_load_state("networkidle")
+                    await detail_page.goto(link["url"], timeout=30000)
+                    await detail_page.wait_for_load_state("domcontentloaded", timeout=20000)
                     await asyncio.sleep(1.5)
                     container = detail_page.locator("main").first
                     if await container.count() == 0:
                         container = detail_page.locator("body").first
                     summary = (await container.inner_text()).strip()
+                    logger.info(f"Резюме прочитано: {link['name']} ({len(summary)} симв.)")
                 except Exception as e:
                     logger.warning(f"Не удалось прочитать резюме {link['name']}: {e}")
                 finally:
                     await detail_page.close()
                 results.append({"name": link["name"], "summary": summary})
 
+            logger.info(f"Импорт с hh.ru завершён: обработано резюме — {len(results)}")
             return results
         finally:
             await browser.close()

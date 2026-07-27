@@ -156,7 +156,7 @@ export const ResumeProfileCard: React.FC<ResumeProfileCardProps> = ({
       <div className="flex flex-col gap-2 mb-6">
         <label className="text-xs text-[#888888] uppercase tracking-wider font-medium flex items-center">
           НАЗВАНИЕ РЕЗЮМЕ (HH.RU)
-          <InfoTooltip text="Резюме нужно ЗАРАНЕЕ создать на hh.ru — бот его не создаёт и не загружает, только выбирает по названию при отклике. Впишите точное название, как оно указано в личном кабинете." />
+          <InfoTooltip text="Резюме нужно ЗАРАНЕЕ создать на hh.ru — бот его не создаёт и не загружает, только выбирает по названию при отклике. Название должно совпадать с hh.ru СИМВОЛ В СИМВОЛ (регистр, пробелы, скобки) — иначе бот его не найдёт в списке и откликнется не тем резюме." />
         </label>
         <input
           type="text"
@@ -165,6 +165,9 @@ export const ResumeProfileCard: React.FC<ResumeProfileCardProps> = ({
           placeholder="Например, Frontend Developer (React)"
           className="input-glow rounded-lg border border-[#2A2A2A] bg-[#131313] px-4 py-2 text-[#e5e2e1] text-sm focus:outline-none focus:ring-0 w-full"
         />
+        <span className="text-xs text-[#666666]">
+          Скопируйте название 1:1 из личного кабинета hh.ru — важно точное совпадение, включая регистр и пробелы
+        </span>
       </div>
 
       {/* Search tags for this profile */}

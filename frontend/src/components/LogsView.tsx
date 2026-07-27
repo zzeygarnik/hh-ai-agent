@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Terminal, Play, Square, Trash2, CheckCircle2, AlertTriangle, Info, XCircle, Search, Sparkles } from 'lucide-react';
 import { LogMessage } from '../types';
-import { onAgentLog } from '../bridge';
+import { onAgentLog, getBufferedLogs } from '../bridge';
 import { parseLogLine } from '../utils/logParser';
 
 interface LogsViewProps {
@@ -19,7 +19,14 @@ export const LogsView: React.FC<LogsViewProps> = ({
   botToken,
   candidateName
 }) => {
-  const [logs, setLogs] = useState<LogMessage[]>([]);
+  // Буфер в bridge.ts переживает размонтирование этого компонента при переключении
+  // вкладок — подхватываем накопленное здесь, а не начинаем с пустого списка.
+  const [logs, setLogs] = useState<LogMessage[]>(() =>
+    getBufferedLogs()
+      .map(parseLogLine)
+      .filter((l): l is LogMessage => l !== null)
+      .slice(-MAX_LOGS)
+  );
   const [filterLevel, setFilterLevel] = useState<'all' | 'info' | 'success' | 'warn' | 'error'>('all');
   const [searchTerm, setSearchTerm] = useState('');
   const logsEndRef = useRef<HTMLDivElement>(null);
@@ -105,9 +112,9 @@ export const LogsView: React.FC<LogsViewProps> = ({
             <Terminal className="w-4 h-4 text-[#FF6B1A]" />
             <span className="text-sm font-semibold text-[#e5e2e1] font-mono">agent.log</span>
             {isBotRunning && (
-              <span className="ml-2 px-2 py-0.5 rounded text-[11px] font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 flex items-center gap-1">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
-                LIVE STREAMING
+              <span className="ml-2 text-[11px] font-medium text-emerald-400 flex items-center gap-1.5">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                live
               </span>
             )}
           </div>

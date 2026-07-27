@@ -1,4 +1,4 @@
-# Собирает gui_app.py + main.py (бот) в один .exe (PyInstaller + pywebview + Playwright + React-фронтенд).
+﻿# Собирает gui_app.py + main.py (бот) в один .exe (PyInstaller + pywebview + Playwright + React-фронтенд).
 # Пользователю итогового .exe не нужны ни Python, ни Node.js, ни pip-пакеты — всё внутри.
 # Запускать из корня проекта: powershell -File build_exe.ps1
 # Для сборки (не для запуска .exe) нужен Node.js/npm.
@@ -21,7 +21,6 @@ pyinstaller `
     --collect-data playwright `
     --collect-data playwright_stealth `
     --add-data "frontend/dist;frontend/dist" `
-    --add-data "gui_assets;gui_assets" `
     --add-data ".env.example;." `
     gui_app.py
 
