@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
-import { Send, Brain, UserCheck, MapPin, Key, User, Eye, EyeOff, Plus } from 'lucide-react';
+import { Send, Brain, UserCheck, MapPin, Key, User, Eye, EyeOff, Plus, Download, Loader2 } from 'lucide-react';
 import { AgentSettings, ResumeProfile } from '../types';
 import { InfoTooltip } from './InfoTooltip';
 import { ResumeProfileCard } from './ResumeProfileCard';
+import { api } from '../bridge';
 
 interface SettingsFormProps {
   settings: AgentSettings;
@@ -13,9 +14,13 @@ function makeProfileId(): string {
   return `profile-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
+type ImportStatus = 'idle' | 'loading' | 'error';
+
 export const SettingsForm: React.FC<SettingsFormProps> = ({ settings, onChange }) => {
   const [showBotToken, setShowBotToken] = useState(false);
   const [showDeepseekKey, setShowDeepseekKey] = useState(false);
+  const [importStatus, setImportStatus] = useState<ImportStatus>('idle');
+  const [importError, setImportError] = useState('');
 
   const updateField = <K extends keyof AgentSettings>(field: K, value: AgentSettings[K]) => {
     onChange({
@@ -49,6 +54,43 @@ export const SettingsForm: React.FC<SettingsFormProps> = ({ settings, onChange }
 
   const removeProfile = (index: number) => {
     updateField('resumeProfiles', settings.resumeProfiles.filter((_, i) => i !== index));
+  };
+
+  const importFromHH = async () => {
+    setImportStatus('loading');
+    setImportError('');
+    try {
+      const res = await api().import_resumes_from_hh();
+      if (!res.ok || !res.resumes || res.resumes.length === 0) {
+        setImportStatus('error');
+        setImportError(res.error || 'Резюме не найдены');
+        return;
+      }
+
+      // Обновляем текст существующих профилей по совпадению названия (сохраняя их
+      // теги поиска), для новых на hh.ru — создаём пустые карточки под заполнение тегов.
+      const existing = settings.resumeProfiles;
+      const usedExisting = new Set<number>();
+      const merged: ResumeProfile[] = res.resumes.map((r) => {
+        const existingIndex = existing.findIndex(
+          (p, i) => !usedExisting.has(i) && p.name.trim() && p.name.trim() === r.name.trim()
+        );
+        if (existingIndex !== -1) {
+          usedExisting.add(existingIndex);
+          return { ...existing[existingIndex], resumeSummary: r.summary };
+        }
+        return { id: makeProfileId(), name: r.name, searchTags: [], resumeSummary: r.summary };
+      });
+      existing.forEach((p, i) => {
+        if (!usedExisting.has(i)) merged.push(p);
+      });
+
+      updateField('resumeProfiles', merged);
+      setImportStatus('idle');
+    } catch (err) {
+      setImportStatus('error');
+      setImportError(String(err));
+    }
   };
 
   return (
@@ -275,14 +317,33 @@ export const SettingsForm: React.FC<SettingsFormProps> = ({ settings, onChange }
       </section>
 
       {/* Section 5: Резюме-профили */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-3">
         <h2 className="text-lg font-semibold text-[#e5e2e1]">
           Резюме-профили
           <span className="text-[#888888] font-normal text-sm ml-2">
             бот ищет и откликается отдельно по каждому
           </span>
         </h2>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={importFromHH}
+            disabled={importStatus === 'loading'}
+            className="flex items-center gap-2 px-3 py-2 rounded-lg border border-[#2A2A2A] bg-[#131313] text-[#e5e2e1] text-xs font-medium hover:border-[#ff6b1a]/50 hover:text-[#ffb596] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {importStatus === 'loading' ? (
+              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+            ) : (
+              <Download className="w-3.5 h-3.5 text-[#ff6b1a]" />
+            )}
+            <span>Импортировать с hh.ru</span>
+          </button>
+          <InfoTooltip text="Подтягивает названия и текст ваших резюме прямо с hh.ru (нужен предыдущий вход через кнопку «Запустить бота»). Совпавшие по названию карточки обновятся, новые — добавятся; теги поиска нужно проставить вручную. Текст может содержать лишнее (меню, кнопки сайта) — подчистите при необходимости." />
+        </div>
       </div>
+      {importStatus === 'error' && (
+        <p className="text-xs text-rose-400 -mt-4">Ошибка импорта: {importError}</p>
+      )}
 
       {settings.resumeProfiles.map((profile, index) => (
         <ResumeProfileCard

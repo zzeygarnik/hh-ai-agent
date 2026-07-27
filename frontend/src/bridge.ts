@@ -28,6 +28,11 @@ declare global {
           filename: string,
           base64Content: string
         ) => Promise<{ ok: boolean; text?: string; error?: string }>;
+        import_resumes_from_hh: () => Promise<{
+          ok: boolean;
+          resumes?: { name: string; summary: string }[];
+          error?: string;
+        }>;
       };
     };
   }

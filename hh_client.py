@@ -11,6 +11,80 @@ from config import RESUME_PROFILES, SEARCH_AREAS
 logger = logging.getLogger(__name__)
 
 STATE_FILE = os.path.join(os.path.dirname(__file__), "state.json")
+USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36"
+
+
+async def fetch_hh_resumes() -> list:
+    """Тянет список резюме соискателя прямо с hh.ru (название + полный текст страницы)
+    через уже сохранённую сессию (state.json). Нужна для автозаполнения резюме-профилей
+    в GUI, чтобы не копировать текст резюме руками.
+
+    Селекторы для списка резюме намеренно не завязаны на конкретные data-qa атрибуты
+    (их точность на приватной странице "Мои резюме" не проверялась вживую) — вместо
+    этого ищем любые ссылки на /resume/, что устойчивее к изменениям вёрстки. Текст
+    резюме берётся как весь видимый текст страницы — тоже грубо, зато не ломается от
+    смены разметки; пользователь может подчистить лишнее в GUI после импорта.
+    """
+    if not os.path.exists(STATE_FILE):
+        raise RuntimeError(
+            "Нет сохранённой сессии hh.ru. Сначала один раз запустите бота и войдите в аккаунт."
+        )
+
+    async with async_playwright() as p:
+        browser = await p.chromium.launch(headless=True)
+        try:
+            context = await browser.new_context(storage_state=STATE_FILE, user_agent=USER_AGENT)
+            page = await context.new_page()
+            await Stealth().apply_stealth_async(page)
+
+            await page.goto("https://hh.ru/applicant/resumes")
+            await page.wait_for_load_state("networkidle")
+            await asyncio.sleep(2)
+
+            anchors = await page.locator('a[href*="/resume/"]').all()
+            seen = set()
+            resume_links = []
+            for a in anchors:
+                href = await a.get_attribute("href")
+                title = (await a.inner_text()).strip()
+                if not href or not title:
+                    continue
+                if href.startswith("/"):
+                    href = f"https://hh.ru{href}"
+                href = href.split("?")[0]
+                if href in seen:
+                    continue
+                seen.add(href)
+                resume_links.append({"name": title, "url": href})
+
+            if not resume_links:
+                raise RuntimeError(
+                    "Не нашёл резюме на hh.ru. Проверьте, что они опубликованы и видны в личном кабинете."
+                )
+
+            results = []
+            for link in resume_links:
+                detail_page = await context.new_page()
+                await Stealth().apply_stealth_async(detail_page)
+                summary = ""
+                try:
+                    await detail_page.goto(link["url"])
+                    await detail_page.wait_for_load_state("networkidle")
+                    await asyncio.sleep(1.5)
+                    container = detail_page.locator("main").first
+                    if await container.count() == 0:
+                        container = detail_page.locator("body").first
+                    summary = (await container.inner_text()).strip()
+                except Exception as e:
+                    logger.warning(f"Не удалось прочитать резюме {link['name']}: {e}")
+                finally:
+                    await detail_page.close()
+                results.append({"name": link["name"], "summary": summary})
+
+            return results
+        finally:
+            await browser.close()
+
 
 class HHClient:
     def __init__(self):
@@ -26,11 +100,10 @@ class HHClient:
         headless = os.path.exists(STATE_FILE)
         self.browser = await self.playwright.chromium.launch(headless=headless)
 
-        user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36"
         if os.path.exists(STATE_FILE):
-            self.context = await self.browser.new_context(storage_state=STATE_FILE, user_agent=user_agent)
+            self.context = await self.browser.new_context(storage_state=STATE_FILE, user_agent=USER_AGENT)
         else:
-            self.context = await self.browser.new_context(user_agent=user_agent)
+            self.context = await self.browser.new_context(user_agent=USER_AGENT)
 
         self.page = await self.context.new_page()
         await Stealth().apply_stealth_async(self.page)
@@ -55,22 +128,36 @@ class HHClient:
         if os.path.exists(STATE_FILE):
             os.remove(STATE_FILE)
             logger.warning("Файл сессии (state.json) недействителен. Я его удалил.")
-            logger.warning("Пожалуйста, перезапустите скрипт (python main.py), чтобы открылось окно браузера для входа.")
+            logger.warning("Перезапустите бота — откроется окно браузера для повторного входа.")
             return False
 
         logger.info("=========================================")
         logger.info("НУЖНА АВТОРИЗАЦИЯ")
-        logger.info("1. В открывшемся браузере войдите в свой аккаунт HH.ru.")
-        logger.info("2. Дождитесь, пока загрузится ваш профиль.")
-        logger.info("3. ВЕРНИТЕСЬ В ЭТО ОКНО КОНСОЛИ И НАЖМИТЕ КЛАВИШУ ENTER.")
+        logger.info("Откройте видимое окно браузера и войдите в свой аккаунт HH.ru.")
+        logger.info("Ничего нажимать здесь не нужно — бот сам определит, когда вход выполнен.")
         logger.info("=========================================")
 
         try:
-            # Ожидаем нажатия Enter (в отдельном потоке, чтобы не блокировать асинхронность)
-            await asyncio.to_thread(input, "👉 Нажмите ENTER здесь, когда войдете в аккаунт: ")
+            # Опрашиваем страницу, пока кнопка "Войти" не исчезнет (значит, юзер залогинился
+            # в открытом окне). Без input() — в упакованном .exe (--windowed) консоли нет,
+            # так что ждать нажатия Enter там было бы нечем.
+            max_wait_seconds = 600  # 10 минут на ручной вход
+            poll_interval = 3
+            waited = 0
+            logged_in = False
+            while waited < max_wait_seconds:
+                await asyncio.sleep(poll_interval)
+                waited += poll_interval
+                if not await login_link.count() and not await login_button.count():
+                    logged_in = True
+                    break
+
+            if not logged_in:
+                logger.error("Не дождались входа в аккаунт (10 минут). Попробуйте перезапустить бота.")
+                return False
 
             logger.info("Сохраняем сессию...")
-            await asyncio.sleep(2) # На всякий случай даем странице загрузиться
+            await asyncio.sleep(2)  # На всякий случай даем странице загрузиться
             await self.context.storage_state(path=STATE_FILE)
             logger.info("Авторизация успешна, состояние сохранено!")
             return True

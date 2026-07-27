@@ -200,6 +200,18 @@ class Api:
 
         return {"ok": True, "text": text}
 
+    def import_resumes_from_hh(self):
+        if self._is_running():
+            return {"ok": False, "error": "Сначала остановите бота — импорт использует тот же браузер"}
+
+        try:
+            from hh_client import fetch_hh_resumes
+
+            resumes = asyncio.run(fetch_hh_resumes())
+            return {"ok": True, "resumes": resumes}
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
     # ---- внутреннее ----
 
     def _setup_logging(self):
