@@ -25,11 +25,22 @@ MY_NAME = os.getenv("MY_NAME", "Твоё Имя")
 MY_GITHUB = os.getenv("MY_GITHUB", "")
 MY_PET_PROJECT = os.getenv("MY_PET_PROJECT", "")  # опционально, пусто = не упоминать в письме
 
-# Регионы поиска (название для лога + параметр URL хх.ru)
-SEARCH_AREAS = [
-    {"name": "Санкт-Петербург (любой график)", "params": "&area=2"},
-    {"name": "Вся Россия (только удаленка)", "params": "&area=113&schedule=remote"},
+# Регионы поиска — включаются флагами из .env (GUI пишет их чекбоксами).
+# По умолчанию (флаги не заданы): СПБ + удалённка по всей РФ, как раньше.
+def _flag(name: str, default: bool) -> bool:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    return raw.strip().lower() in ("1", "true", "yes")
+
+_REGION_DEFS = [
+    ("SEARCH_REGION_MOSCOW", False, {"name": "Москва (любой график)", "params": "&area=1"}),
+    ("SEARCH_REGION_SPB", True, {"name": "Санкт-Петербург (любой график)", "params": "&area=2"}),
+    ("SEARCH_REGION_REMOTE", True, {"name": "Вся Россия (только удаленка)", "params": "&area=113&schedule=remote"}),
 ]
+SEARCH_AREAS = [cfg for env_key, default, cfg in _REGION_DEFS if _flag(env_key, default)]
+if not SEARCH_AREAS:
+    SEARCH_AREAS = [_REGION_DEFS[1][2], _REGION_DEFS[2][2]]
 
 # HH.ru настройки
 # Ключевые слова для поиска. По умолчанию — список ниже; можно переопределить через .env

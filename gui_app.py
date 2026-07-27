@@ -1,8 +1,9 @@
 """
 Настроечный GUI для HH AI Agent (pywebview).
 
-Frontend — статический HTML/CSS/JS в web/ (можно заменить экспортом из
-Google Stitch практически без переделок). Backend — этот файл: читает и
+Frontend — React/Vite-приложение в frontend/ (дизайн из Google Stitch).
+Перед запуском его нужно собрать: `npm --prefix frontend install && npm --prefix frontend run build`
+(build_exe.ps1 делает это автоматически). Backend — этот файл: читает и
 пишет .env, запускает/останавливает main.py, стримит его вывод в лог-панель.
 
 Работает и как обычный скрипт (`python gui_app.py`), и после сборки в .exe
@@ -31,7 +32,7 @@ else:
 ENV_PATH = BASE_DIR / ".env"
 ENV_EXAMPLE_PATH = BASE_DIR / ".env.example"
 MAIN_SCRIPT = BASE_DIR / "main.py"
-WEB_DIR = _RESOURCE_DIR / "web"
+FRONTEND_DIST = _RESOURCE_DIR / "frontend" / "dist"
 
 DEFAULTS = {
     "LLM_PROVIDER": "deepseek",
@@ -46,6 +47,7 @@ CONFIG_KEYS = [
     "OLLAMA_URL", "OLLAMA_MODEL",
     "MY_NAME", "MY_GITHUB", "MY_PET_PROJECT",
     "TARGET_RESUME_NAME", "SEARCH_QUERIES", "MY_RESUME_SUMMARY",
+    "SEARCH_REGION_MOSCOW", "SEARCH_REGION_SPB", "SEARCH_REGION_REMOTE",
 ]
 
 
@@ -179,14 +181,23 @@ class Api:
 
 
 def main():
+    index_file = FRONTEND_DIST / "index.html"
+    if not index_file.exists():
+        raise SystemExit(
+            f"Не найден собранный фронтенд: {index_file}\n"
+            "Собери его сначала:\n"
+            "  npm --prefix frontend install\n"
+            "  npm --prefix frontend run build"
+        )
+
     api = Api()
     webview.create_window(
         "HH AI Agent",
-        str(WEB_DIR / "index.html"),
+        str(index_file),
         js_api=api,
-        width=960,
-        height=800,
-        min_size=(760, 620),
+        width=1100,
+        height=820,
+        min_size=(900, 640),
         background_color="#0D0D0D",
     )
     webview.start()

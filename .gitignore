@@ -1,6 +1,7 @@
 .env
 state.json
 agent.db
+agent.log
 __pycache__/
 *.pyc
 .venv/
@@ -8,3 +9,12 @@ venv/
 env/
 .vscode/
 .idea/
+
+# Node / фронтенд (frontend/, Design/Screen */)
+node_modules/
+dist/
+build/
+
+# PyInstaller (build_exe.ps1 регенерирует)
+/*.spec
+

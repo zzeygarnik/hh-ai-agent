@@ -316,6 +316,7 @@ class HHClient:
 
                     if not database.is_message_processed(msg_id):
                         database.add_processed_message(msg_id, chat_link, last_msg)
+                        logger.info(f"Новое сообщение от работодателя: {title}")
                         await send_notification_func(f"🔔 <b>Новое сообщение от работодателя!</b>\nВакансия: {title}\n\n<i>{last_msg}</i>\n<a href='https://hh.ru{chat_link}'>Перейти к чату</a>")
 
                 await chat_page.close()
