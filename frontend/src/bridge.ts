@@ -24,6 +24,10 @@ declare global {
         start_bot: (data: Record<string, string>) => Promise<{ ok: boolean; error?: string }>;
         stop_bot: () => Promise<{ ok: boolean }>;
         get_status: () => Promise<{ running: boolean }>;
+        import_resume_pdf: (
+          filename: string,
+          base64Content: string
+        ) => Promise<{ ok: boolean; text?: string; error?: string }>;
       };
     };
   }

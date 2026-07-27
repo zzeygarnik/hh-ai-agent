@@ -13,6 +13,7 @@ Frontend — React/Vite-приложение в frontend/ (дизайн из Goo
 докачивается сам — прогресс показывается в отдельном маленьком окне.
 """
 import asyncio
+import base64
 import json
 import logging
 import subprocess
@@ -51,10 +52,13 @@ CONFIG_KEYS = [
     "TG_BOT_TOKEN", "TG_USER_ID", "LLM_PROVIDER",
     "DEEPSEEK_API_KEY", "DEEPSEEK_MODEL",
     "OLLAMA_URL", "OLLAMA_MODEL",
-    "MY_NAME", "MY_GITHUB", "MY_PET_PROJECT",
+    "MY_NAME", "MY_GITHUB",
     "TARGET_RESUME_NAME", "SEARCH_QUERIES", "MY_RESUME_SUMMARY",
     "SEARCH_REGION_MOSCOW", "SEARCH_REGION_SPB", "SEARCH_REGION_REMOTE",
 ]
+
+RESUME_PDF_PATH_NAME = "resume.pdf"
+MAX_RESUME_PDF_SIZE = 15 * 1024 * 1024  # 15 МБ, с запасом
 
 
 def _encode_env_value(value: str) -> str:
@@ -169,6 +173,34 @@ class Api:
 
     def get_status(self):
         return {"running": self._is_running()}
+
+    def import_resume_pdf(self, filename: str, base64_content: str):
+        try:
+            raw = base64.b64decode(base64_content)
+        except Exception as e:
+            return {"ok": False, "error": f"Повреждённый файл: {e}"}
+
+        if len(raw) > MAX_RESUME_PDF_SIZE:
+            return {"ok": False, "error": "Файл слишком большой (максимум 15 МБ)"}
+
+        pdf_path = BASE_DIR / RESUME_PDF_PATH_NAME
+        try:
+            pdf_path.write_bytes(raw)
+        except OSError as e:
+            return {"ok": False, "error": f"Не удалось сохранить файл: {e}"}
+
+        try:
+            from pypdf import PdfReader
+
+            reader = PdfReader(str(pdf_path))
+            text = "\n".join(page.extract_text() or "" for page in reader.pages).strip()
+        except Exception as e:
+            return {"ok": False, "error": f"Не удалось прочитать PDF: {e}"}
+
+        if not text:
+            return {"ok": False, "error": "Не удалось извлечь текст (возможно, резюме — скан-изображение без текстового слоя)"}
+
+        return {"ok": True, "text": text}
 
     # ---- внутреннее ----
 

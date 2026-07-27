@@ -1,16 +1,33 @@
-import React, { useState } from 'react';
-import { Send, Brain, UserCheck, Search, FileText, Key, User, Eye, EyeOff, Plus, X, Info } from 'lucide-react';
+import React, { useRef, useState } from 'react';
+import { Send, Brain, UserCheck, Search, FileText, Key, User, Eye, EyeOff, Plus, X, Info, Paperclip, Loader2, CheckCircle2 } from 'lucide-react';
 import { AgentSettings } from '../types';
+import { InfoTooltip } from './InfoTooltip';
+import { api } from '../bridge';
 
 interface SettingsFormProps {
   settings: AgentSettings;
   onChange: (updated: AgentSettings) => void;
 }
 
+type PdfStatus = 'idle' | 'loading' | 'done' | 'error';
+
+function fileToBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(((reader.result as string) || '').split(',')[1] || '');
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(file);
+  });
+}
+
 export const SettingsForm: React.FC<SettingsFormProps> = ({ settings, onChange }) => {
   const [showBotToken, setShowBotToken] = useState(false);
   const [showDeepseekKey, setShowDeepseekKey] = useState(false);
   const [newTagInput, setNewTagInput] = useState('');
+  const [pdfStatus, setPdfStatus] = useState<PdfStatus>('idle');
+  const [pdfError, setPdfError] = useState('');
+  const [pdfName, setPdfName] = useState('');
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const updateField = <K extends keyof AgentSettings>(field: K, value: AgentSettings[K]) => {
     onChange({
@@ -48,6 +65,30 @@ export const SettingsForm: React.FC<SettingsFormProps> = ({ settings, onChange }
     });
   };
 
+  const handlePdfUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+
+    setPdfStatus('loading');
+    setPdfError('');
+    try {
+      const base64 = await fileToBase64(file);
+      const res = await api().import_resume_pdf(file.name, base64);
+      if (res.ok && res.text) {
+        updateField('coverLetterTemplate', res.text);
+        setPdfName(file.name);
+        setPdfStatus('done');
+      } else {
+        setPdfStatus('error');
+        setPdfError(res.error || 'Не удалось извлечь текст из PDF');
+      }
+    } catch (err) {
+      setPdfStatus('error');
+      setPdfError(String(err));
+    }
+  };
+
   return (
     <div className="grid grid-cols-1 gap-8">
       {/* Section 1: Telegram Настройки */}
@@ -59,8 +100,9 @@ export const SettingsForm: React.FC<SettingsFormProps> = ({ settings, onChange }
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {/* Bot Token */}
           <div className="flex flex-col gap-2">
-            <label className="text-xs text-[#888888] uppercase tracking-wider font-medium">
+            <label className="text-xs text-[#888888] uppercase tracking-wider font-medium flex items-center">
               BOT TOKEN
+              <InfoTooltip text="Создайте бота через @BotFather в Telegram (команда /newbot) и скопируйте выданный токен." />
             </label>
             <div className="relative flex items-center input-glow rounded-lg border border-[#2A2A2A] bg-[#131313] px-3 py-2 transition-all">
               <Key className="w-4 h-4 text-[#888888] mr-2 shrink-0" />
@@ -84,8 +126,9 @@ export const SettingsForm: React.FC<SettingsFormProps> = ({ settings, onChange }
 
           {/* User ID (Admin) */}
           <div className="flex flex-col gap-2">
-            <label className="text-xs text-[#888888] uppercase tracking-wider font-medium">
+            <label className="text-xs text-[#888888] uppercase tracking-wider font-medium flex items-center">
               USER ID (ADMIN)
+              <InfoTooltip text="Ваш числовой Telegram ID. Узнать можно, написав боту @userinfobot." />
             </label>
             <div className="relative flex items-center input-glow rounded-lg border border-[#2A2A2A] bg-[#131313] px-3 py-2 transition-all">
               <User className="w-4 h-4 text-[#888888] mr-2 shrink-0" />
@@ -137,8 +180,9 @@ export const SettingsForm: React.FC<SettingsFormProps> = ({ settings, onChange }
         {/* Provider Specific Input Fields */}
         {settings.llmProvider === 'deepseek' ? (
           <div className="flex flex-col gap-2">
-            <label className="text-xs text-[#888888] uppercase tracking-wider font-medium">
+            <label className="text-xs text-[#888888] uppercase tracking-wider font-medium flex items-center">
               DEEPSEEK API KEY
+              <InfoTooltip text="Получите ключ на platform.deepseek.com → API Keys. Нужен баланс на аккаунте (оплата по факту использования)." />
             </label>
             <div className="relative flex items-center input-glow rounded-lg border border-[#2A2A2A] bg-[#131313] px-3 py-2 transition-all">
               <Key className="w-4 h-4 text-[#888888] mr-2 shrink-0" />
@@ -162,8 +206,9 @@ export const SettingsForm: React.FC<SettingsFormProps> = ({ settings, onChange }
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className="flex flex-col gap-2">
-              <label className="text-xs text-[#888888] uppercase tracking-wider font-medium">
+              <label className="text-xs text-[#888888] uppercase tracking-wider font-medium flex items-center">
                 OLLAMA SERVER HOST
+                <InfoTooltip text="Адрес локального сервера Ollama. Обычно http://localhost:11434 — нужно, чтобы Ollama была установлена и запущена на этом компьютере." />
               </label>
               <div className="relative flex items-center input-glow rounded-lg border border-[#2A2A2A] bg-[#131313] px-3 py-2 transition-all">
                 <input
@@ -227,21 +272,9 @@ export const SettingsForm: React.FC<SettingsFormProps> = ({ settings, onChange }
           </div>
 
           <div className="flex flex-col gap-2">
-            <label className="text-xs text-[#888888] uppercase tracking-wider font-medium">
-              ОСНОВНОЙ ПЕТ-ПРОЕКТ
-            </label>
-            <input
-              type="text"
-              value={settings.mainProjectUrl}
-              onChange={(e) => updateField('mainProjectUrl', e.target.value)}
-              placeholder="URL или название"
-              className="input-glow rounded-lg border border-[#2A2A2A] bg-[#131313] px-4 py-2 text-[#e5e2e1] text-sm focus:outline-none focus:ring-0 w-full"
-            />
-          </div>
-
-          <div className="flex flex-col gap-2">
-            <label className="text-xs text-[#888888] uppercase tracking-wider font-medium">
+            <label className="text-xs text-[#888888] uppercase tracking-wider font-medium flex items-center">
               НАЗВАНИЕ РЕЗЮМЕ (HH.RU)
+              <InfoTooltip text="Точное название резюме, как оно указано в личном кабинете hh.ru — иначе бот не сможет выбрать его при отклике." />
             </label>
             <input
               type="text"
@@ -348,10 +381,44 @@ export const SettingsForm: React.FC<SettingsFormProps> = ({ settings, onChange }
 
       {/* Section 5: Шаблон сопроводительного письма (Контекст) */}
       <section className="bg-[#1E1E1E] border border-[#2A2A2A] rounded-xl p-6 shadow-sm">
-        <h3 className="text-xl font-semibold text-[#e5e2e1] mb-6 flex items-center gap-2.5">
+        <h3 className="text-xl font-semibold text-[#e5e2e1] mb-4 flex items-center gap-2.5">
           <FileText className="w-5 h-5 text-[#ff6b1a]" />
           <span>Шаблон сопроводительного письма (Контекст)</span>
         </h3>
+
+        <div className="mb-4 flex flex-wrap items-center gap-3">
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="application/pdf,.pdf"
+            className="hidden"
+            onChange={handlePdfUpload}
+          />
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={pdfStatus === 'loading'}
+            className="flex items-center gap-2 px-3 py-2 rounded-lg border border-[#2A2A2A] bg-[#131313] text-[#e5e2e1] text-xs font-medium hover:border-[#ff6b1a]/50 hover:text-[#ffb596] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {pdfStatus === 'loading' ? (
+              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+            ) : (
+              <Paperclip className="w-3.5 h-3.5 text-[#ff6b1a]" />
+            )}
+            <span>Прикрепить резюме (PDF)</span>
+          </button>
+
+          {pdfStatus === 'done' && (
+            <span className="flex items-center gap-1.5 text-xs text-emerald-400">
+              <CheckCircle2 className="w-3.5 h-3.5" />
+              Текст из «{pdfName}» подставлен ниже — проверьте и подправьте при необходимости
+            </span>
+          )}
+          {pdfStatus === 'error' && (
+            <span className="text-xs text-rose-400">Ошибка: {pdfError}</span>
+          )}
+        </div>
+
         <div className="flex flex-col gap-2">
           <label className="text-xs text-[#888888] uppercase tracking-wider font-medium flex justify-between items-center">
             <span>БАЗОВЫЙ ТЕКСТ РЕЗЮМЕ (LLM БУДЕТ АДАПТИРОВАТЬ ЕГО)</span>

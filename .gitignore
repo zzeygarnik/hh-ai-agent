@@ -2,6 +2,7 @@
 state.json
 agent.db
 agent.log
+resume.pdf
 __pycache__/
 *.pyc
 .venv/

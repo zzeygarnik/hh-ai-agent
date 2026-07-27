@@ -9,7 +9,6 @@ import { TopHeader } from './components/TopHeader';
 import { SettingsForm } from './components/SettingsForm';
 import { BottomSaveBar } from './components/BottomSaveBar';
 import { LogsView } from './components/LogsView';
-import { HtmlExportModal } from './components/HtmlExportModal';
 import { AgentSettings, ActiveTab } from './types';
 import { api, onAgentStatus, whenApiReady } from './bridge';
 
@@ -22,7 +21,6 @@ const EMPTY_SETTINGS: AgentSettings = {
   ollamaModel: '',
   candidateName: '',
   githubUrl: '',
-  mainProjectUrl: '',
   resumeTitle: '',
   searchTags: [],
   regions: {
@@ -45,7 +43,6 @@ function envToSettings(env: Record<string, string>): AgentSettings {
     ollamaModel: env.OLLAMA_MODEL || '',
     candidateName: env.MY_NAME || '',
     githubUrl: env.MY_GITHUB || '',
-    mainProjectUrl: env.MY_PET_PROJECT || '',
     resumeTitle: env.TARGET_RESUME_NAME || '',
     searchTags: (env.SEARCH_QUERIES || '')
       .split('\n')
@@ -71,7 +68,6 @@ function settingsToEnvPatch(s: AgentSettings): Record<string, string> {
     OLLAMA_MODEL: s.ollamaModel,
     MY_NAME: s.candidateName,
     MY_GITHUB: s.githubUrl,
-    MY_PET_PROJECT: s.mainProjectUrl,
     TARGET_RESUME_NAME: s.resumeTitle,
     SEARCH_QUERIES: s.searchTags.join('\n'),
     MY_RESUME_SUMMARY: s.coverLetterTemplate,
@@ -84,7 +80,6 @@ function settingsToEnvPatch(s: AgentSettings): Record<string, string> {
 export default function App() {
   const [activeTab, setActiveTab] = useState<ActiveTab>('settings');
   const [isBotRunning, setIsBotRunning] = useState<boolean>(false);
-  const [isExportModalOpen, setIsExportModalOpen] = useState<boolean>(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState<boolean>(false);
   const [isLoaded, setIsLoaded] = useState(false);
 
@@ -185,7 +180,6 @@ export default function App() {
         setActiveTab={setActiveTab}
         isBotRunning={isBotRunning}
         setIsBotRunning={toggleBot}
-        onOpenExportModal={() => setIsExportModalOpen(true)}
         isOpenMobile={isMobileMenuOpen}
         onCloseMobile={() => setIsMobileMenuOpen(false)}
       />
@@ -196,7 +190,6 @@ export default function App() {
           activeTab={activeTab}
           isBotRunning={isBotRunning}
           onOpenMobileMenu={() => setIsMobileMenuOpen(true)}
-          onOpenExportModal={() => setIsExportModalOpen(true)}
           hasUnsavedChanges={hasUnsavedChanges}
         />
 
@@ -228,13 +221,6 @@ export default function App() {
           />
         )}
       </main>
-
-      {/* Export to HTML Modal */}
-      <HtmlExportModal
-        isOpen={isExportModalOpen}
-        onClose={() => setIsExportModalOpen(false)}
-        settings={currentSettings}
-      />
     </div>
   );
 }

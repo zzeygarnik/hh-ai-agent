@@ -1,12 +1,11 @@
 import React from 'react';
-import { Menu, Code, RefreshCw } from 'lucide-react';
+import { Menu, RefreshCw } from 'lucide-react';
 import { ActiveTab } from '../types';
 
 interface TopHeaderProps {
   activeTab: ActiveTab;
   isBotRunning: boolean;
   onOpenMobileMenu: () => void;
-  onOpenExportModal: () => void;
   hasUnsavedChanges: boolean;
 }
 
@@ -14,7 +13,6 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
   activeTab,
   isBotRunning,
   onOpenMobileMenu,
-  onOpenExportModal,
   hasUnsavedChanges
 }) => {
   return (
@@ -38,16 +36,6 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
           <span className={`w-2 h-2 rounded-full ${isBotRunning ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'}`} />
           <span>{isBotRunning ? 'Бот активен & ищет вакансии' : 'Бот остановлен'}</span>
         </div>
-
-        {/* HTML Export Button */}
-        <button
-          onClick={onOpenExportModal}
-          className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-[#2A2A2A] bg-[#1E1E1E] text-xs font-medium text-[#e5e2e1] hover:bg-[#2A2A2A] transition-colors"
-          title="Экспортировать данную конфигурацию в чистое HTML + Tailwind"
-        >
-          <Code className="w-3.5 h-3.5 text-[#FF6B1A]" />
-          <span className="hidden md:inline">Экспорт HTML</span>
-        </button>
 
         {hasUnsavedChanges && (
           <span className="flex items-center gap-1.5 text-xs text-[#FF6B1A] bg-[#FF6B1A]/10 px-2.5 py-1 rounded-md border border-[#FF6B1A]/30 font-medium">

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Settings, Terminal, Play, Square, Code, Bot } from 'lucide-react';
+import { Settings, Terminal, Play, Square, Bot } from 'lucide-react';
 import { ActiveTab } from '../types';
 
 interface SidebarProps {
@@ -7,7 +7,6 @@ interface SidebarProps {
   setActiveTab: (tab: ActiveTab) => void;
   isBotRunning: boolean;
   setIsBotRunning: (running: boolean) => void;
-  onOpenExportModal: () => void;
   isOpenMobile?: boolean;
   onCloseMobile?: () => void;
 }
@@ -17,7 +16,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
   setActiveTab,
   isBotRunning,
   setIsBotRunning,
-  onOpenExportModal,
   isOpenMobile = false,
   onCloseMobile
 }) => {
@@ -83,20 +81,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 <span className="relative inline-flex rounded-full h-2 w-2 bg-[#FF6B1A]"></span>
               </span>
             )}
-          </button>
-        </div>
-
-        {/* Action: Export to HTML */}
-        <div className="px-3 mt-4">
-          <button
-            onClick={() => {
-              onOpenExportModal();
-              onCloseMobile?.();
-            }}
-            className="w-full flex items-center gap-3 px-4 py-2.5 rounded-lg border border-[#FF6B1A]/40 bg-[#FF6B1A]/10 text-[#FF6B1A] hover:bg-[#FF6B1A]/20 transition-all text-sm font-medium"
-          >
-            <Code className="w-4 h-4" />
-            <span>Экспорт в HTML + CSS</span>
           </button>
         </div>
 

@@ -2,3 +2,4 @@
 # Пользователю бота (main.py) устанавливать их не нужно — см. requirements.txt.
 pywebview
 pyinstaller
+pypdf

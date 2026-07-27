@@ -14,7 +14,6 @@ export interface AgentSettings {
   // Candidate profile
   candidateName: string;
   githubUrl: string;
-  mainProjectUrl: string;
   resumeTitle: string;
 
   // Search parameters

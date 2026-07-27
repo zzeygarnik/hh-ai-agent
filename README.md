@@ -34,7 +34,7 @@ playwright install chromium
 ```
 
 ### 2. Настройка окружения
-Скопируйте `.env.example` в `.env` и заполните значения — токены, выбор LLM-провайдера (`LLM_PROVIDER=deepseek` или `ollama`), данные профиля (`MY_NAME`, `MY_GITHUB`, `MY_PET_PROJECT`).
+Скопируйте `.env.example` в `.env` и заполните значения — токены, выбор LLM-провайдера (`LLM_PROVIDER=deepseek` или `ollama`), данные профиля (`MY_NAME`, `MY_GITHUB`).
 
 Проще всего это сделать через GUI (см. ниже) — форма читает и пишет `.env` сама, ничего руками редактировать не нужно.
 

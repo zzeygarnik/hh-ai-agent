@@ -11,7 +11,6 @@ from config import (
     LLM_PROVIDER,
     MY_GITHUB,
     MY_NAME,
-    MY_PET_PROJECT,
     MY_RESUME_SUMMARY,
     OLLAMA_MODEL,
     OLLAMA_URL,
@@ -63,14 +62,9 @@ async def _call_llm(prompt: str, retries: int = 2) -> str:
 
 
 def _identity_block() -> str:
-    if MY_PET_PROJECT and MY_GITHUB:
-        return (
-            f"5. Обязательно упомяни мой пет-проект {MY_PET_PROJECT} и ВСЕГДА вставляй "
-            f"ссылку на мой GitHub: {MY_GITHUB}"
-        )
     if MY_GITHUB:
         return f"5. Если уместно, вставь ссылку на мой GitHub: {MY_GITHUB}"
-    return "5. Про GitHub и пет-проекты не упоминай, их нет в профиле."
+    return "5. Про GitHub не упоминай, ссылки нет в профиле."
 
 
 async def generate_cover_letter(vacancy_title: str, vacancy_description: str) -> str:
