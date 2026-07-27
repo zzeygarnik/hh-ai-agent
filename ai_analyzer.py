@@ -1,5 +1,77 @@
+import asyncio
+import logging
+from typing import Optional
+
 import aiohttp
-from config import OLLAMA_URL, OLLAMA_MODEL, MY_RESUME_SUMMARY
+
+from config import (
+    DEEPSEEK_API_KEY,
+    DEEPSEEK_MODEL,
+    DEEPSEEK_URL,
+    LLM_PROVIDER,
+    MY_GITHUB,
+    MY_NAME,
+    MY_PET_PROJECT,
+    MY_RESUME_SUMMARY,
+    OLLAMA_MODEL,
+    OLLAMA_URL,
+)
+
+logger = logging.getLogger(__name__)
+
+LLM_TIMEOUT = aiohttp.ClientTimeout(total=30)
+
+
+async def _call_ollama(prompt: str) -> str:
+    payload = {"model": OLLAMA_MODEL, "prompt": prompt, "stream": False}
+    async with aiohttp.ClientSession(timeout=LLM_TIMEOUT) as session:
+        async with session.post(OLLAMA_URL, json=payload) as response:
+            response.raise_for_status()
+            data = await response.json()
+            return data.get("response", "").strip()
+
+
+async def _call_deepseek(prompt: str) -> str:
+    headers = {"Authorization": f"Bearer {DEEPSEEK_API_KEY}"}
+    payload = {
+        "model": DEEPSEEK_MODEL,
+        "messages": [{"role": "user", "content": prompt}],
+        "stream": False,
+    }
+    async with aiohttp.ClientSession(timeout=LLM_TIMEOUT) as session:
+        async with session.post(DEEPSEEK_URL, json=payload, headers=headers) as response:
+            response.raise_for_status()
+            data = await response.json()
+            return data["choices"][0]["message"]["content"].strip()
+
+
+async def _call_llm(prompt: str, retries: int = 2) -> str:
+    """Дергает настроенного LLM-провайдера с retry на сетевые/rate-limit ошибки."""
+    call = _call_deepseek if LLM_PROVIDER == "deepseek" else _call_ollama
+    last_error: Optional[Exception] = None
+    for attempt in range(retries + 1):
+        try:
+            return await call(prompt)
+        except Exception as e:
+            last_error = e
+            logger.warning(
+                f"Ошибка запроса к LLM ({LLM_PROVIDER}), попытка {attempt + 1}/{retries + 1}: {e}"
+            )
+            if attempt < retries:
+                await asyncio.sleep(2 * (attempt + 1))
+    raise last_error
+
+
+def _identity_block() -> str:
+    if MY_PET_PROJECT and MY_GITHUB:
+        return (
+            f"5. Обязательно упомяни мой пет-проект {MY_PET_PROJECT} и ВСЕГДА вставляй "
+            f"ссылку на мой GitHub: {MY_GITHUB}"
+        )
+    if MY_GITHUB:
+        return f"5. Если уместно, вставь ссылку на мой GitHub: {MY_GITHUB}"
+    return "5. Про GitHub и пет-проекты не упоминай, их нет в профиле."
+
 
 async def generate_cover_letter(vacancy_title: str, vacancy_description: str) -> str:
     prompt = f"""
@@ -15,49 +87,25 @@ async def generate_cover_letter(vacancy_title: str, vacancy_description: str) ->
 2. Пиши развернуто, структурировано (3-4 абзаца).
 3. Стиль: живой, профессиональный, уверенный.
 4. Включай в письмо перечисление моего стека технологий, упоминание высшего образования и опыта работы с ИИ из моего профиля.
-5. Обязательно упомяни мой пет-проект VisionForge и ВСЕГДА вставляй ссылку на мой GitHub: https://github.com/fikstt2
+{_identity_block()}
 6. Никаких подписей в начале письма! Только в самом конце.
-7. Подпись строго: "Евгений". Никаких "С уважением".
+7. Подпись строго: "{MY_NAME}". Никаких "С уважением".
 8. ВЫВОДИ ТОЛЬКО ТЕКСТ ПИСЬМА БЕЗ КАВЫЧЕК. Твой ответ копируется автоматически! Строго запрещены любые вводные фразы (например, "Here is a sample...", "Вот письмо:"). Ни слова, кроме самого письма.
-
-Пример хорошего письма:
-Привет!
-
-Заинтересовала вакансия {vacancy_title}. Я программист с опытом разработки на Python, C, C++. Интересуюсь backend-разработкой, фулстек-задачами и Computer Vision. Готов решать сложные задачи и быстро обучаюсь.
-
-Я владею инструментами ИИ и могу сам быстро обучить себя чему угодно. Имею опыт обучения моделей компьютерного зрения для задач детекции и классификации. Высшее образование по направлению "Информатика и вычислительная техника".
-
-Мой стек: Python, C++, C, Docker, SQL, FastAPI, PyQt, HTML, JS, TensorFlow, PyTorch, PostgreSQL, Linux.
-
-Отдельно хочу упомянуть свой пет-проект VisionForge — это фулстек-решение для компьютерного зрения, которое я реализовал на Python и PyQt5 (код тут: https://github.com/fikstt2). Я готов проходить тестовые задания и собеседования.
-
-Буду рад пообщаться подробнее!
-
-Евгений
 """
-    
-    payload = {
-        "model": OLLAMA_MODEL,
-        "prompt": prompt,
-        "stream": False
-    }
-    
+
     try:
-        async with aiohttp.ClientSession() as session:
-            async with session.post(OLLAMA_URL, json=payload) as response:
-                if response.status == 200:
-                    data = await response.json()
-                    text = data.get("response", "").strip()
-                    # Жесткая очистка от частых галлюцинаций LLM
-                    text = text.replace('"', '').replace("'", "")
-                    if "Here is" in text or "Here's" in text:
-                        text = text.split("\n\n", 1)[-1]
-                    if "Note:" in text:
-                        text = text.split("Note:")[0].strip()
-                    return text.strip()
+        text = await _call_llm(prompt)
+        # Жесткая очистка от частых галлюцинаций LLM
+        text = text.replace('"', "").replace("'", "")
+        if "Here is" in text or "Here's" in text:
+            text = text.split("\n\n", 1)[-1]
+        if "Note:" in text:
+            text = text.split("Note:")[0].strip()
+        return text.strip()
     except Exception as e:
-        print(f"Ошибка при обращении к Ollama (письмо): {e}")
+        logger.error(f"Ошибка при обращении к LLM (письмо): {e}")
         return "Здравствуйте! Прошу рассмотреть мое резюме на эту вакансию. Буду рад обсудить детали на собеседовании."
+
 
 async def is_vacancy_suitable(vacancy_title: str, vacancy_description: str) -> bool:
     prompt = f"""
@@ -78,20 +126,10 @@ async def is_vacancy_suitable(vacancy_title: str, vacancy_description: str) -> b
 Если вакансия подходит под мои критерии, ответь ТОЛЬКО одним словом: YES.
 Если не подходит, ответь ТОЛЬКО одним словом: NO.
 """
-    
-    payload = {
-        "model": OLLAMA_MODEL,
-        "prompt": prompt,
-        "stream": False
-    }
-    
+
     try:
-        async with aiohttp.ClientSession() as session:
-            async with session.post(OLLAMA_URL, json=payload, timeout=30) as response:
-                response.raise_for_status()
-                data = await response.json()
-                answer = data.get("response", "").strip().upper()
-                return "YES" in answer
+        answer = (await _call_llm(prompt)).strip().upper()
+        return "YES" in answer
     except Exception as e:
-        print(f"Ошибка при обращении к Ollama (анализ): {e}")
+        logger.error(f"Ошибка при обращении к LLM (анализ): {e}")
         return False

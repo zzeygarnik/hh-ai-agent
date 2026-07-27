@@ -1,8 +1,11 @@
 import asyncio
+import logging
 from aiogram import Bot, Dispatcher
 from aiogram.types import Message
 from aiogram.filters import Command
 from config import TG_BOT_TOKEN, TG_USER_ID
+
+logger = logging.getLogger(__name__)
 
 bot = Bot(token=TG_BOT_TOKEN)
 dp = Dispatcher()
@@ -10,14 +13,13 @@ dp = Dispatcher()
 async def send_notification(text: str):
     """Отправляет уведомление пользователю."""
     if TG_BOT_TOKEN == "your_bot_token_here" or TG_USER_ID == "your_telegram_id_here":
-        print("ОШИБКА: Не настроен Telegram. Уведомление:")
-        print(text)
+        logger.warning(f"Telegram не настроен. Уведомление: {text}")
         return
-        
+
     try:
         await bot.send_message(chat_id=TG_USER_ID, text=text, parse_mode="HTML")
     except Exception as e:
-        print(f"Ошибка при отправке сообщения в TG: {e}")
+        logger.error(f"Ошибка при отправке сообщения в TG: {e}")
 
 @dp.message(Command("start"))
 async def cmd_start(message: Message):
@@ -32,7 +34,7 @@ captcha_solution = ""
 async def send_captcha_request(filepath: str, text: str):
     """Отправляет фото капчи пользователю."""
     if TG_BOT_TOKEN == "your_bot_token_here" or TG_USER_ID == "your_telegram_id_here":
-        print("ОШИБКА: Не настроен Telegram. Капча сохранена в", filepath)
+        logger.warning(f"Telegram не настроен. Капча сохранена в {filepath}")
         return
         
     try:
@@ -41,7 +43,7 @@ async def send_captcha_request(filepath: str, text: str):
         captcha_event.clear() # Блокируем процесс
         await bot.send_photo(chat_id=TG_USER_ID, photo=photo, caption=text, parse_mode="HTML")
     except Exception as e:
-        print(f"Ошибка при отправке капчи в TG: {e}")
+        logger.error(f"Ошибка при отправке капчи в TG: {e}")
 
 @dp.message()
 async def handle_text(message: Message):
@@ -57,7 +59,7 @@ async def handle_text(message: Message):
 
 async def start_bot():
     """Запускает бота (long-polling)"""
-    print("Запуск Telegram-бота...")
+    logger.info("Запуск Telegram-бота...")
     await dp.start_polling(bot)
 
 if __name__ == "__main__":

@@ -1,5 +1,8 @@
 import sqlite3
 import os
+import logging
+
+logger = logging.getLogger(__name__)
 
 DB_PATH = os.path.join(os.path.dirname(__file__), "agent.db")
 
@@ -59,4 +62,4 @@ def add_processed_message(msg_id: str, chat_id: str, text: str):
 
 if __name__ == "__main__":
     init_db()
-    print("Database initialized.")
+    logger.info("Database initialized.")
