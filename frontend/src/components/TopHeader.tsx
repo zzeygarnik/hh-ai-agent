@@ -31,10 +31,12 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
       </div>
 
       <div className="flex items-center gap-3">
-        {/* Status Badge */}
-        <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-full bg-[#1E1E1E] border border-[#2A2A2A] text-xs text-[#888888]">
-          <span className={`w-2 h-2 rounded-full ${isBotRunning ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'}`} />
-          <span>{isBotRunning ? 'Бот активен & ищет вакансии' : 'Бот остановлен'}</span>
+        {/* Статус — просто точка + текст, без плашки-бейджа */}
+        <div className="hidden sm:flex items-center gap-2 text-xs">
+          <span className={`w-1.5 h-1.5 rounded-full ${isBotRunning ? 'bg-[#FF6B1A]' : 'bg-[#555555]'}`} />
+          <span className={isBotRunning ? 'text-[#e5e2e1]' : 'text-[#888888]'}>
+            {isBotRunning ? 'Бот работает' : 'Бот остановлен'}
+          </span>
         </div>
 
         {hasUnsavedChanges && (

@@ -9,7 +9,12 @@ interface SettingsFormProps {
   onChange: (updated: AgentSettings) => void;
 }
 
-type PdfStatus = 'idle' | 'loading' | 'done' | 'error';
+type PdfFileStatus = 'loading' | 'done' | 'error';
+interface PdfFileEntry {
+  name: string;
+  status: PdfFileStatus;
+  error?: string;
+}
 
 function fileToBase64(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -24,9 +29,9 @@ export const SettingsForm: React.FC<SettingsFormProps> = ({ settings, onChange }
   const [showBotToken, setShowBotToken] = useState(false);
   const [showDeepseekKey, setShowDeepseekKey] = useState(false);
   const [newTagInput, setNewTagInput] = useState('');
-  const [pdfStatus, setPdfStatus] = useState<PdfStatus>('idle');
-  const [pdfError, setPdfError] = useState('');
-  const [pdfName, setPdfName] = useState('');
+  const [editingTagIndex, setEditingTagIndex] = useState<number | null>(null);
+  const [editingTagValue, setEditingTagValue] = useState('');
+  const [pdfFiles, setPdfFiles] = useState<PdfFileEntry[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const updateField = <K extends keyof AgentSettings>(field: K, value: AgentSettings[K]) => {
@@ -55,6 +60,38 @@ export const SettingsForm: React.FC<SettingsFormProps> = ({ settings, onChange }
     }
   };
 
+  const startEditTag = (index: number) => {
+    setEditingTagIndex(index);
+    setEditingTagValue(settings.searchTags[index]);
+  };
+
+  const commitEditTag = () => {
+    if (editingTagIndex === null) return;
+    const index = editingTagIndex;
+    const trimmed = editingTagValue.trim();
+    const tags = settings.searchTags;
+
+    if (!trimmed) {
+      updateField('searchTags', tags.filter((_, i) => i !== index));
+    } else if (!tags.some((t, i) => i !== index && t === trimmed)) {
+      const next = [...tags];
+      next[index] = trimmed;
+      updateField('searchTags', next);
+    }
+    // если правка совпала с другим существующим тегом — молча отменяем, чтобы не плодить дубли
+    setEditingTagIndex(null);
+  };
+
+  const handleTagEditKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      commitEditTag();
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      setEditingTagIndex(null);
+    }
+  };
+
   const toggleRegion = (regionKey: 'moscow' | 'spb' | 'remote') => {
     onChange({
       ...settings,
@@ -66,27 +103,45 @@ export const SettingsForm: React.FC<SettingsFormProps> = ({ settings, onChange }
   };
 
   const handlePdfUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
+    const files = Array.from(e.target.files || []);
     e.target.value = '';
-    if (!file) return;
+    if (files.length === 0) return;
 
-    setPdfStatus('loading');
-    setPdfError('');
-    try {
-      const base64 = await fileToBase64(file);
-      const res = await api().import_resume_pdf(file.name, base64);
-      if (res.ok && res.text) {
-        updateField('coverLetterTemplate', res.text);
-        setPdfName(file.name);
-        setPdfStatus('done');
-      } else {
-        setPdfStatus('error');
-        setPdfError(res.error || 'Не удалось извлечь текст из PDF');
+    const startIndex = pdfFiles.length;
+    setPdfFiles((prev) => [...prev, ...files.map((f) => ({ name: f.name, status: 'loading' as PdfFileStatus }))]);
+
+    // Пишем в textarea последовательно (await по очереди), чтобы не перетереть
+    // друг друга при параллельной обработке нескольких файлов.
+    let combinedText = settings.coverLetterTemplate;
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      const entryIndex = startIndex + i;
+      try {
+        const base64 = await fileToBase64(file);
+        const res = await api().import_resume_pdf(file.name, base64);
+        if (res.ok && res.text) {
+          combinedText = combinedText.trim()
+            ? `${combinedText.trim()}\n\n--- ${file.name} ---\n${res.text}`
+            : res.text;
+          onChange({ ...settings, coverLetterTemplate: combinedText });
+          setPdfFiles((prev) => prev.map((p, idx) => (idx === entryIndex ? { ...p, status: 'done' } : p)));
+        } else {
+          setPdfFiles((prev) =>
+            prev.map((p, idx) =>
+              idx === entryIndex ? { ...p, status: 'error', error: res.error || 'Не удалось извлечь текст' } : p
+            )
+          );
+        }
+      } catch (err) {
+        setPdfFiles((prev) =>
+          prev.map((p, idx) => (idx === entryIndex ? { ...p, status: 'error', error: String(err) } : p))
+        );
       }
-    } catch (err) {
-      setPdfStatus('error');
-      setPdfError(String(err));
     }
+  };
+
+  const removePdfEntry = (index: number) => {
+    setPdfFiles((prev) => prev.filter((_, i) => i !== index));
   };
 
   return (
@@ -274,7 +329,7 @@ export const SettingsForm: React.FC<SettingsFormProps> = ({ settings, onChange }
           <div className="flex flex-col gap-2">
             <label className="text-xs text-[#888888] uppercase tracking-wider font-medium flex items-center">
               НАЗВАНИЕ РЕЗЮМЕ (HH.RU)
-              <InfoTooltip text="Точное название резюме, как оно указано в личном кабинете hh.ru — иначе бот не сможет выбрать его при отклике." />
+              <InfoTooltip text="Резюме нужно ЗАРАНЕЕ создать на самом hh.ru — бот его не создаёт и не загружает, только выбирает по названию при отклике. Впишите точное название, как оно указано в личном кабинете. Если оставить пустым и на hh.ru резюме несколько — при отклике будет использовано то, что выбрано по умолчанию." />
             </label>
             <input
               type="text"
@@ -300,12 +355,30 @@ export const SettingsForm: React.FC<SettingsFormProps> = ({ settings, onChange }
             ПОИСКОВЫЕ ЗАПРОСЫ (ТЕГИ)
           </label>
           <div className="min-h-[48px] input-glow rounded-lg border border-[#2A2A2A] bg-[#131313] p-2 flex flex-wrap gap-2 items-center">
-            {settings.searchTags.map((tag) => (
+            {settings.searchTags.map((tag, index) => (
               <div
                 key={tag}
                 className="bg-[#353535] text-[#e5e2e1] px-3 py-1 rounded-md text-xs font-medium flex items-center gap-1.5"
               >
-                <span>{tag}</span>
+                {editingTagIndex === index ? (
+                  <input
+                    autoFocus
+                    type="text"
+                    value={editingTagValue}
+                    onChange={(e) => setEditingTagValue(e.target.value)}
+                    onKeyDown={handleTagEditKeyDown}
+                    onBlur={commitEditTag}
+                    className="bg-transparent border-none focus:outline-none text-[#e5e2e1] text-xs w-28"
+                  />
+                ) : (
+                  <span
+                    onClick={() => startEditTag(index)}
+                    className="cursor-text hover:text-[#ffb596] transition-colors"
+                    title="Нажмите, чтобы изменить"
+                  >
+                    {tag}
+                  </span>
+                )}
                 <button
                   type="button"
                   onClick={() => handleRemoveTag(tag)}
@@ -386,36 +459,50 @@ export const SettingsForm: React.FC<SettingsFormProps> = ({ settings, onChange }
           <span>Шаблон сопроводительного письма (Контекст)</span>
         </h3>
 
-        <div className="mb-4 flex flex-wrap items-center gap-3">
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="application/pdf,.pdf"
-            className="hidden"
-            onChange={handlePdfUpload}
-          />
-          <button
-            type="button"
-            onClick={() => fileInputRef.current?.click()}
-            disabled={pdfStatus === 'loading'}
-            className="flex items-center gap-2 px-3 py-2 rounded-lg border border-[#2A2A2A] bg-[#131313] text-[#e5e2e1] text-xs font-medium hover:border-[#ff6b1a]/50 hover:text-[#ffb596] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {pdfStatus === 'loading' ? (
-              <Loader2 className="w-3.5 h-3.5 animate-spin" />
-            ) : (
+        <div className="mb-4 flex flex-col gap-3">
+          <div className="flex flex-wrap items-center gap-3">
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="application/pdf,.pdf"
+              multiple
+              className="hidden"
+              onChange={handlePdfUpload}
+            />
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              className="flex items-center gap-2 px-3 py-2 rounded-lg border border-[#2A2A2A] bg-[#131313] text-[#e5e2e1] text-xs font-medium hover:border-[#ff6b1a]/50 hover:text-[#ffb596] transition-colors"
+            >
               <Paperclip className="w-3.5 h-3.5 text-[#ff6b1a]" />
-            )}
-            <span>Прикрепить резюме (PDF)</span>
-          </button>
-
-          {pdfStatus === 'done' && (
-            <span className="flex items-center gap-1.5 text-xs text-emerald-400">
-              <CheckCircle2 className="w-3.5 h-3.5" />
-              Текст из «{pdfName}» подставлен ниже — проверьте и подправьте при необходимости
+              <span>Прикрепить резюме (PDF, можно несколько)</span>
+            </button>
+            <span className="text-xs text-[#666666]">
+              Текст пойдёт в контекст для ИИ — на hh.ru файл не загружается, резюме там должно быть уже создано
             </span>
-          )}
-          {pdfStatus === 'error' && (
-            <span className="text-xs text-rose-400">Ошибка: {pdfError}</span>
+          </div>
+
+          {pdfFiles.length > 0 && (
+            <div className="flex flex-col gap-1.5">
+              {pdfFiles.map((f, index) => (
+                <div key={`${f.name}-${index}`} className="flex items-center gap-2 text-xs">
+                  {f.status === 'loading' && <Loader2 className="w-3.5 h-3.5 animate-spin text-[#888888]" />}
+                  {f.status === 'done' && <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />}
+                  {f.status === 'error' && <X className="w-3.5 h-3.5 text-rose-400" />}
+                  <span className="text-[#e5e2e1]">{f.name}</span>
+                  {f.status === 'done' && <span className="text-emerald-400">текст добавлен ниже</span>}
+                  {f.status === 'error' && <span className="text-rose-400">{f.error}</span>}
+                  <button
+                    type="button"
+                    onClick={() => removePdfEntry(index)}
+                    className="ml-auto text-[#888888] hover:text-[#ff6b1a] transition-colors p-0.5"
+                    title="Убрать из списка"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              ))}
+            </div>
           )}
         </div>
 
