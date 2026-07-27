@@ -3,14 +3,18 @@
 
 Frontend — React/Vite-приложение в frontend/ (дизайн из Google Stitch).
 Перед запуском его нужно собрать: `npm --prefix frontend install && npm --prefix frontend run build`
-(build_exe.ps1 делает это автоматически). Backend — этот файл: читает и
-пишет .env, запускает/останавливает main.py, стримит его вывод в лог-панель.
+(build_exe.ps1 делает это автоматически).
 
-Работает и как обычный скрипт (`python gui_app.py`), и после сборки в .exe
-через PyInstaller (см. build_exe.ps1).
+Бот (main.py) не запускается отдельным процессом — он крутится прямо
+внутри этого приложения (свой event loop в фоновом потоке), чтобы
+собранный .exe был единственным, что нужно скачать и запустить: без
+отдельного Python и pip-пакетов на машине пользователя. При первом
+запуске бота, если не установлен Chromium для Playwright, он тихо
+докачивается сам — прогресс показывается в отдельном маленьком окне.
 """
+import asyncio
 import json
-import shutil
+import logging
 import subprocess
 import sys
 import threading
@@ -20,8 +24,10 @@ from typing import Optional
 import webview
 from dotenv import dotenv_values
 
+APP_TITLE = "ZGRNK HH Agent"
+
 if getattr(sys, "frozen", False):
-    # PyInstaller-сборка: .env/main.py живут рядом с .exe, а не во временной
+    # PyInstaller-сборка: .env живёт рядом с .exe, а не во временной
     # папке распаковки (sys._MEIPASS), куда попадают только бандленные ресурсы.
     BASE_DIR = Path(sys.executable).resolve().parent
     _RESOURCE_DIR = Path(getattr(sys, "_MEIPASS", BASE_DIR))
@@ -31,8 +37,8 @@ else:
 
 ENV_PATH = BASE_DIR / ".env"
 ENV_EXAMPLE_PATH = BASE_DIR / ".env.example"
-MAIN_SCRIPT = BASE_DIR / "main.py"
 FRONTEND_DIST = _RESOURCE_DIR / "frontend" / "dist"
+PROGRESS_HTML = _RESOURCE_DIR / "gui_assets" / "progress.html"
 
 DEFAULTS = {
     "LLM_PROVIDER": "deepseek",
@@ -49,16 +55,6 @@ CONFIG_KEYS = [
     "TARGET_RESUME_NAME", "SEARCH_QUERIES", "MY_RESUME_SUMMARY",
     "SEARCH_REGION_MOSCOW", "SEARCH_REGION_SPB", "SEARCH_REGION_REMOTE",
 ]
-
-
-def _detect_python() -> str:
-    if not getattr(sys, "frozen", False):
-        return sys.executable
-    for candidate in ("python", "py"):
-        found = shutil.which(candidate)
-        if found:
-            return found
-    return "python"
 
 
 def _encode_env_value(value: str) -> str:
@@ -84,9 +80,55 @@ def write_env_values(values: dict) -> None:
     ENV_PATH.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
+class GuiLogHandler(logging.Handler):
+    """Разворачивает записи logging (hh_client, ai_analyzer, main, ...) в лог-панель GUI."""
+
+    def __init__(self, push_fn):
+        super().__init__()
+        self.push_fn = push_fn
+        self.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s"))
+
+    def emit(self, record: logging.LogRecord) -> None:
+        try:
+            self.push_fn(self.format(record) + "\n")
+        except Exception:
+            self.handleError(record)
+
+
+def _install_chromium(push_fn) -> None:
+    """Качает браузер Chromium для Playwright, если его ещё нет. Стримит вывод в push_fn.
+
+    Если браузер уже установлен, playwright сам быстро выходит без скачивания —
+    поэтому эту функцию безопасно вызывать при каждом старте бота.
+    """
+    from playwright._impl._driver import compute_driver_executable, get_driver_env
+
+    driver_executable, driver_cli = compute_driver_executable()
+    creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+    proc = subprocess.Popen(
+        [driver_executable, driver_cli, "install", "chromium"],
+        env=get_driver_env(),
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        bufsize=1,
+        creationflags=creationflags,
+    )
+    if proc.stdout is not None:
+        for line in proc.stdout:
+            push_fn(line)
+    returncode = proc.wait()
+    if returncode != 0:
+        raise RuntimeError(f"playwright install chromium завершился с кодом {returncode}")
+
+
 class Api:
     def __init__(self):
-        self.bot_process: Optional[subprocess.Popen] = None
+        self.bot_thread: Optional[threading.Thread] = None
+        self.bot_loop: Optional[asyncio.AbstractEventLoop] = None
+        self.stop_event: Optional[asyncio.Event] = None
+        self._progress_window: Optional[webview.Window] = None
+        self._setup_logging()
 
     # ---- вызывается фронтендом через window.pywebview.api.* ----
 
@@ -108,33 +150,19 @@ class Api:
 
         self._persist(data)
 
-        python_path = _detect_python()
-        creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
-        try:
-            self.bot_process = subprocess.Popen(
-                [python_path, str(MAIN_SCRIPT)],
-                cwd=str(BASE_DIR),
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                text=True,
-                bufsize=1,
-                creationflags=creationflags,
-            )
-        except OSError as e:
-            return {"ok": False, "error": str(e)}
-
-        threading.Thread(target=self._stream_logs, daemon=True).start()
+        self.bot_thread = threading.Thread(target=self._bot_thread_main, daemon=True)
+        self.bot_thread.start()
         return {"ok": True}
 
     def stop_bot(self):
-        if self.bot_process is None:
+        if not self._is_running():
             return {"ok": True}
-        self.bot_process.terminate()
-        try:
-            self.bot_process.wait(timeout=5)
-        except subprocess.TimeoutExpired:
-            self.bot_process.kill()
-        self.bot_process = None
+        if self.bot_loop is not None and self.stop_event is not None:
+            loop = self.bot_loop
+            event = self.stop_event
+            loop.call_soon_threadsafe(event.set)
+        if self.bot_thread is not None:
+            self.bot_thread.join(timeout=20)
         self._push_log("[бот остановлен]\n")
         self._push_status(False)
         return {"ok": True}
@@ -144,8 +172,25 @@ class Api:
 
     # ---- внутреннее ----
 
+    def _setup_logging(self):
+        root = logging.getLogger()
+        if root.handlers:
+            return
+        root.setLevel(logging.INFO)
+        fmt = logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s")
+
+        file_handler = logging.FileHandler(BASE_DIR / "agent.log", encoding="utf-8")
+        file_handler.setFormatter(fmt)
+        root.addHandler(file_handler)
+
+        stream_handler = logging.StreamHandler()
+        stream_handler.setFormatter(fmt)
+        root.addHandler(stream_handler)
+
+        root.addHandler(GuiLogHandler(self._push_log))
+
     def _is_running(self) -> bool:
-        return self.bot_process is not None and self.bot_process.poll() is None
+        return self.bot_thread is not None and self.bot_thread.is_alive()
 
     def _persist(self, data: dict):
         values = load_env_values()
@@ -157,27 +202,84 @@ class Api:
             values[key] = raw
         write_env_values(values)
 
-    def _stream_logs(self):
-        proc = self.bot_process
-        if proc is None or proc.stdout is None:
+    def _bot_thread_main(self):
+        try:
+            self._open_progress_window()
+            self._push_progress("Проверяю браузер Chromium для Playwright...\n")
+            _install_chromium(self._push_progress)
+            self._push_progress("Готово, запускаю агента...\n")
+        except Exception as e:
+            message = f"Не удалось установить Chromium: {e}\n"
+            self._push_progress(message)
+            self._push_log(message)
+            self._push_status(False)
             return
-        for line in proc.stdout:
-            self._push_log(line)
-        self._push_log("[процесс бота завершился]\n")
-        self.bot_process = None
-        self._push_status(False)
+        finally:
+            self._close_progress_window()
+
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        self.bot_loop = loop
+        self.stop_event = asyncio.Event()
+
+        import main as main_module  # тяжёлый импорт (playwright/aiogram) — только когда реально нужен
+
+        try:
+            loop.run_until_complete(main_module.run_agent(self.stop_event))
+        except Exception as e:
+            self._push_log(f"[критическая ошибка бота: {e}]\n")
+        finally:
+            loop.close()
+            self.bot_loop = None
+            self.stop_event = None
+            self._push_status(False)
+
+    def _open_progress_window(self):
+        self._progress_window = webview.create_window(
+            f"{APP_TITLE} — установка",
+            str(PROGRESS_HTML),
+            width=440,
+            height=320,
+            resizable=False,
+            background_color="#0D0D0D",
+        )
+
+    def _close_progress_window(self):
+        window = self._progress_window
+        self._progress_window = None
+        if window is None:
+            return
+        try:
+            window.destroy()
+        except Exception:
+            pass
+
+    def _push_progress(self, line: str):
+        window = self._progress_window
+        if window is None:
+            return
+        try:
+            window.evaluate_js(f"window.appendLine({json.dumps(line)})")
+        except Exception:
+            pass
 
     def _push_log(self, line: str):
         window = webview.windows[0] if webview.windows else None
         if window is None:
             return
-        window.evaluate_js(f"window.appendLog({json.dumps(line)})")
+        try:
+            window.evaluate_js(f"window.appendLog({json.dumps(line)})")
+        except Exception:
+            pass
 
     def _push_status(self, running: bool):
         window = webview.windows[0] if webview.windows else None
         if window is None:
             return
-        window.evaluate_js(f"window.setStatus({json.dumps(running)})")
+        try:
+            window.evaluate_js(f"window.setStatus({json.dumps(running)})")
+        except Exception:
+            pass
 
 
 def main():
@@ -192,7 +294,7 @@ def main():
 
     api = Api()
     webview.create_window(
-        "HH AI Agent",
+        APP_TITLE,
         str(index_file),
         js_api=api,
         width=1100,

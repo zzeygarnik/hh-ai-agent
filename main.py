@@ -14,7 +14,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-async def agent_loop():
+async def agent_loop(stop_event: asyncio.Event):
     client = HHClient()
     await client.start()
 
@@ -28,7 +28,7 @@ async def agent_loop():
     await send_notification("🤖 ИИ-агент успешно запущен и начал работу!")
 
     try:
-        while True:
+        while not stop_event.is_set():
             try:
                 # Ищем вакансии и откликаемся
                 await client.search_and_apply(send_notification)
@@ -38,25 +38,39 @@ async def agent_loop():
             except Exception as e:
                 logger.error(f"Ошибка в основном цикле агента: {e}", exc_info=True)
 
-            # Ждем 30 минут перед следующим запуском
+            # Ждем 30 минут перед следующим запуском (или пока не попросят остановиться)
             logger.info("Ожидание 30 минут...")
-            await asyncio.sleep(1800)
+            try:
+                await asyncio.wait_for(stop_event.wait(), timeout=1800)
+            except asyncio.TimeoutError:
+                pass
     finally:
         await client.stop()
 
-async def main():
-    # Инициализация БД
+async def run_agent(stop_event: asyncio.Event):
+    """Точка входа для запуска из GUI (gui_app.py) и из CLI (`python main.py`).
+
+    stop_event — сигнал остановки: устанавливается снаружи (GUI) либо
+    никогда не устанавливается при обычном CLI-запуске (Ctrl+C).
+    """
     init_db()
     logger.info("Инициализация завершена.")
 
-    # Запускаем бота и логику агента параллельно
     bot_task = asyncio.create_task(start_bot())
-    agent_task = asyncio.create_task(agent_loop())
+    agent_task = asyncio.create_task(agent_loop(stop_event))
 
-    await asyncio.gather(bot_task, agent_task)
+    await stop_event.wait()
+
+    bot_task.cancel()
+    agent_task.cancel()
+    await asyncio.gather(bot_task, agent_task, return_exceptions=True)
 
 if __name__ == "__main__":
+    async def _standalone():
+        stop_event = asyncio.Event()
+        await run_agent(stop_event)
+
     try:
-        asyncio.run(main())
+        asyncio.run(_standalone())
     except KeyboardInterrupt:
         logger.info("Остановка работы.")

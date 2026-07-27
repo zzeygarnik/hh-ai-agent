@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>ZGRNK HH Agent — установка</title>
+<style>
+  :root {
+    --bg: #0D0D0D;
+    --card: #1E1E1E;
+    --card-2: #131313;
+    --border: #2A2A2A;
+    --text: #e5e2e1;
+    --text-dim: #888888;
+    --orange: #FF6B1A;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0;
+    height: 100%;
+    background: var(--bg);
+    color: var(--text);
+    font-family: "Inter", "Segoe UI", system-ui, sans-serif;
+    overflow: hidden;
+  }
+  .wrap {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    padding: 20px;
+  }
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 16px;
+  }
+  .brand-icon {
+    width: 34px;
+    height: 34px;
+    border-radius: 8px;
+    background: var(--card);
+    border: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--orange);
+    font-weight: 700;
+    font-size: 15px;
+    flex-shrink: 0;
+  }
+  .brand-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: #ffb596;
+    line-height: 1.2;
+  }
+  .brand-subtitle {
+    font-size: 11px;
+    color: var(--text-dim);
+  }
+  .status-line {
+    font-size: 13px;
+    color: var(--text);
+    margin-bottom: 10px;
+  }
+  .progress-track {
+    height: 6px;
+    border-radius: 999px;
+    background: var(--card-2);
+    border: 1px solid var(--border);
+    overflow: hidden;
+    margin-bottom: 16px;
+    flex-shrink: 0;
+  }
+  .progress-fill {
+    height: 100%;
+    width: 40%;
+    border-radius: 999px;
+    background: linear-gradient(90deg, transparent, var(--orange), transparent);
+    animation: slide 1.3s ease-in-out infinite;
+  }
+  @keyframes slide {
+    0%   { transform: translateX(-100%); }
+    100% { transform: translateX(350%); }
+  }
+  .log {
+    flex: 1;
+    background: #000;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 12px;
+    font-family: "Consolas", monospace;
+    font-size: 11px;
+    color: #ccc;
+    overflow-y: auto;
+    white-space: pre-wrap;
+    word-break: break-all;
+  }
+  .hint {
+    margin-top: 10px;
+    font-size: 11px;
+    color: var(--text-dim);
+    text-align: center;
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="brand">
+    <div class="brand-icon">Z</div>
+    <div>
+      <div class="brand-title">ZGRNK HH Agent</div>
+      <div class="brand-subtitle">Первый запуск</div>
+    </div>
+  </div>
+
+  <div class="status-line">Настраиваю браузер для автоматизации HH.ru...</div>
+
+  <div class="progress-track"><div class="progress-fill"></div></div>
+
+  <div class="log" id="log"></div>
+
+  <div class="hint">Это разовая операция. Окно закроется автоматически.</div>
+</div>
+
+<script>
+  window.appendLine = function (line) {
+    var el = document.getElementById('log');
+    el.textContent += line;
+    el.scrollTop = el.scrollHeight;
+  };
+</script>
+</body>
+</html>

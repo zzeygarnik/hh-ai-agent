@@ -18,3 +18,6 @@ build/
 # PyInstaller (build_exe.ps1 регенерирует)
 /*.spec
 
+# Claude Code локальные настройки/память проекта
+.claude/
+

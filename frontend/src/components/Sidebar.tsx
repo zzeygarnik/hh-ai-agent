@@ -43,7 +43,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           </div>
           <div>
             <h1 className="font-semibold text-lg leading-tight text-[#ffb596]">ZGRNK HH Agent</h1>
-            <p className="text-xs text-[#888888] mt-0.5 font-medium tracking-wide">v1.0.4 Premium</p>
+            <p className="text-xs text-[#888888] mt-0.5 font-medium tracking-wide">v1.0.4</p>
           </div>
         </div>
 

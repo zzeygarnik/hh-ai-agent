@@ -137,7 +137,7 @@ export function generateExportHtml(settings: AgentSettings): string {
             </div>
             <div>
                 <h1 class="font-headline-md text-headline-md font-bold text-primary">ZGRNK HH Agent</h1>
-                <p class="font-label-sm text-label-sm text-text-muted mt-1">v1.0.4 Premium</p>
+                <p class="font-label-sm text-label-sm text-text-muted mt-1">v1.0.4</p>
             </div>
         </div>
         <div class="flex flex-col gap-2 mt-4 px-2">
