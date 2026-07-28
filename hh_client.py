@@ -182,7 +182,14 @@ class HHClient:
     async def search_and_apply(self, send_notification_func):
         logger.info("Начинаем поиск вакансий...")
         for profile in RESUME_PROFILES:
-            logger.info(f"Резюме-профиль: {profile['name'] or '(без названия)'}")
+            name = profile["name"] or "(без названия)"
+            if not profile["queries"] or not profile["summary"].strip():
+                logger.warning(
+                    f"Резюме-профиль '{name}' пропущен: не заполнены поисковые запросы "
+                    "или текст резюме. Откройте настройки и заполните профиль."
+                )
+                continue
+            logger.info(f"Резюме-профиль: {name}")
             await self._search_and_apply_for_profile(profile, send_notification_func)
 
     async def _search_and_apply_for_profile(self, profile, send_notification_func):

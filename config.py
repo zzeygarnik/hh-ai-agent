@@ -43,38 +43,18 @@ if not SEARCH_AREAS:
     SEARCH_AREAS = [_REGION_DEFS[1][2], _REGION_DEFS[2][2]]
 
 # HH.ru настройки
-# Ключевые слова для поиска по умолчанию (используются, если в профиле резюме
-# не заданы свои queries).
-_DEFAULT_SEARCH_QUERIES = [
-    "Python backend",
-    "Python разработчик",
-    "FastAPI",
-    "C++ разработчик",
-    "Программист C++",
-    "Фулстек Python",
-    "Computer Vision",
-    "Backend Developer",
-    "Backend Python",
-]
-
-_DEFAULT_RESUME_SUMMARY = """
-Я программист с опытом разработки на Python, C, C++.
-Интересуюсь backend-разработкой, фулстек-задачами и Computer Vision.
-Готов решать сложные задачи и быстро обучаюсь.
-Не боюсь рутины, готов учить все что нужно для работы.
-Владею инструментами ИИ и могу сам быстро обучить себя чему угодно.
-Ищу удаленную работу, либо работу в офисе в Санкт-Петербурге.
-Зарплата от 120 000 руб.
-Готов проходить тестовые задания и собеседования.
-Имею высшее образование по направлению "Информатика и вычислительная техника".
-Мой стек: Python, C++, C, Docker, SQL, FastAPI, HTML, JS, PostgreSQL, Linux.
-"""
-
+# Пустой профиль-заглушка на случай, если RESUME_PROFILES в .env вообще не задан
+# (например, запуск через CLI без единого захода в GUI). Раньше здесь лежал
+# захардкоженный текст резюме с чужим стеком (Python/C/C++) — бот подставлял
+# его молча в любой профиль с пустым summary/queries и реально откликался с
+# ЧУЖИМИ данными. Теперь пустой профиль просто ничего не ищет (queries=[]),
+# пока пользователь не заполнит его в настройках — см. предупреждение в
+# hh_client.py::search_and_apply.
 _DEFAULT_PROFILES = [
     {
-        "name": "Backend-разработчик",
-        "queries": _DEFAULT_SEARCH_QUERIES,
-        "summary": _DEFAULT_RESUME_SUMMARY,
+        "name": "",
+        "queries": [],
+        "summary": "",
     }
 ]
 
@@ -101,8 +81,8 @@ def _load_resume_profiles() -> list:
         queries = [q.strip() for q in p.get("queries", []) if isinstance(q, str) and q.strip()]
         profiles.append({
             "name": (p.get("name") or "").strip(),
-            "queries": queries or _DEFAULT_SEARCH_QUERIES,
-            "summary": p.get("summary") or _DEFAULT_RESUME_SUMMARY,
+            "queries": queries,
+            "summary": (p.get("summary") or "").strip(),
         })
     return profiles or _DEFAULT_PROFILES
 
